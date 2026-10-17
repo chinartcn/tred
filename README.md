@@ -13,7 +13,7 @@
 ## 安装
 
 ```bash
-npm i -D tred
+npm i -D @rtcn/tred
 ```
 
 要求 Node.js >= 20。
@@ -91,7 +91,7 @@ tred verify --dir src --format markdown > pr-comment.md
 ## 库 API
 
 ```ts
-import { replace, replaceMany, makeFingerprint } from 'tred';
+import { replace, replaceMany, makeFingerprint } from '@rtcn/tred';
 
 // 单文件替换
 const r = await replace({
