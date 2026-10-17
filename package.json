@@ -1,0 +1,92 @@
+{
+  "name": "tred",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Anchor + AST precise find-and-replace with syntax validation, atomic writes, and idempotent fingerprints.",
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "demo": "node --import tsx examples/demo.ts",
+    "typecheck": "tsc --noEmit",
+    "tred": "node bin/tred.mjs",
+    "demo:cli": "bash examples/cli-demo.sh",
+    "demo:ast": "bash examples/demo-ast.sh",
+    "demo:verify": "bash examples/demo-verify.sh",
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "pretest": "npm run build",
+    "demo:fix": "bash examples/demo-fix.sh",
+    "demo:markdown": "bash examples/demo-markdown.sh",
+    "demo:cache": "bash examples/demo-cache.sh",
+    "demo:rollback": "bash examples/demo-rollback.sh",
+    "demo:partial": "bash examples/demo-partial.sh",
+    "demo:diff": "bash examples/demo-diff.sh",
+    "demo:fix-cache": "bash examples/demo-fix-cache.sh",
+    "demo:diff-dir": "bash examples/demo-diff-dir.sh",
+    "demo:annotate": "bash examples/demo-annotate.sh",
+    "demo:annotate-dir": "bash examples/demo-annotate-dir.sh",
+    "demo:since": "bash examples/demo-since.sh",
+    "demo:doctor": "bash examples/demo-doctor.sh",
+    "demo:since-file": "bash examples/demo-since-file.sh",
+    "demo:baseline": "bash examples/demo-baseline.sh",
+    "demo:init": "bash examples/demo-init.sh",
+    "demo:check": "bash examples/demo-check.sh",
+    "demo:github": "bash examples/demo-github-annotations.sh",
+    "demo:watch": "bash examples/demo-watch.sh",
+    "demo:diff-from": "bash examples/demo-diff-from.sh",
+    "test:fast": "node --import tsx --test test/tred.test.ts test/baseline.test.ts test/init.test.ts test/annotate-order.test.ts test/render-github.test.ts test/diff-lines.test.ts test/render-markdown.test.ts test/verify.test.ts",
+    "demo:sarif": "bash examples/demo-sarif.sh",
+    "demo:html": "bash examples/demo-html.sh",
+    "serve": "node bin/tred.mjs serve",
+    "serve:demo": "node bin/tred.mjs serve --dir examples/_verify_demo"
+  },
+  "dependencies": {
+    "typescript": "^5.5.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "@types/node": "^20.14.0"
+  },
+  "bin": {
+    "tred": "bin/tred.mjs"
+  },
+  "keywords": [
+    "typescript",
+    "ast",
+    "codemod",
+    "anchor",
+    "replace",
+    "refactor",
+    "tred",
+    "transaction",
+    "baseline"
+  ],
+  "license": "MIT",
+  "author": "chinartcn <rtcn_0523@qq.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chinartcn/tred"
+  },
+  "bugs": {
+    "url": "https://github.com/chinartcn/tred/issues"
+  },
+  "homepage": "https://github.com/chinartcn/tred#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
+}

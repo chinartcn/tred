@@ -1,0 +1,46 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+.tred-dist.tsbuildinfo
+
+# 临时文件
+.tred-tmp/
+*.tred.tmp
+.tred-cache/
+
+# 归档（本地保留，不入 git）
+.archive/
+
+# 审查报告（本地保留，不入 git）
+docs/audit/
+
+# npm pack 产物
+*.tgz
+
+# 环境变量
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+scripts/
+
+# 根目录一次性工具脚本
+/*.mjs
+!bin/tred.mjs

@@ -1,0 +1,26 @@
+[
+  {
+    "file": "examples/_batch_a.ts",
+    "anchor": "GraphEngine#loadUnlocked",
+    "content": "loadUnlocked(): void {\n  console.log('from batch A');\n}",
+    "fingerprint": "aaaaaaaa",
+    "autoInjectAnchor": true,
+    "astSelector": {
+      "kind": "method",
+      "className": "GraphEngine",
+      "methodName": "loadUnlocked"
+    }
+  },
+  {
+    "file": "examples/_batch_b.ts",
+    "anchor": "GraphEngine#loadUnlocked",
+    "content": "loadUnlocked(): void {\n  console.log('from batch B');\n}",
+    "fingerprint": "bbbbbbbb",
+    "autoInjectAnchor": true,
+    "astSelector": {
+      "kind": "method",
+      "className": "GraphEngine",
+      "methodName": "loadUnlocked"
+    }
+  }
+]

@@ -1,0 +1,37 @@
+# 源码 / 测试 / 示例（不需要发布）
+src/
+test/
+examples/
+
+# 归档 / 审查 / 文档
+.archive/
+docs/
+scripts/
+
+# 所有 .mjs（除 bin/tred.mjs）
+*.mjs
+!bin/tred.mjs
+
+# TS 配置
+tsconfig*.json
+.tred-dist.tsbuildinfo
+
+# 本地状态
+.tred-version
+.tred-cache/
+.tred-tmp/
+
+# HTML 报告 / tarball
+*.html
+*.tgz
+
+# 环境
+.env*
+
+# IDE / 系统
+.vscode/
+.idea/
+.DS_Store
+
+# 日志
+*.log
