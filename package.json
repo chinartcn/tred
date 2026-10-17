@@ -1,7 +1,6 @@
 {
   "name": "tred",
   "version": "1.2.0",
-  "private": true,
   "type": "module",
   "description": "Anchor + AST precise find-and-replace with syntax validation, atomic writes, and idempotent fingerprints.",
   "scripts": {
@@ -65,7 +64,7 @@
   "author": "chinartcn <rtcn_0523@qq.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chinartcn/tred"
+    "url": "git+https://github.com/chinartcn/tred.git"
   },
   "bugs": {
     "url": "https://github.com/chinartcn/tred/issues"
