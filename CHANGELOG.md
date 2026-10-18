@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.1.0] - 2026-10-22
+### Added
+- **多级 Context 嵌套**：`context` 字段支持传入数组（如 `["class:Worker", "method:onmessage"]`），精准锁定深层代码作用域。
+- **HTML 可视化报告**：`tred grep --ast --html` 自动生成卡片式的 `tred-grep-report.html`，在浏览器中查看带上下文标签的搜索结果。
+- **Fuzzy 安全阈值**：`--fuzzy-threshold <n>` 允许设置最低相似度，低于该分数的匹配将被直接拒绝，防止 AI 改错代码。
+
 ## [3.0.0] - 2026-10-20
 ### Architecture Update
 > 为什么跳到 3.0.0？因为 AST 引擎内部结构发生了重构，引入了 `context` 空间感知。
@@ -11,7 +17,6 @@
 - AST 引擎全面支持嵌套属性、箭头函数、赋值表达式。
 
 ## [2.9.0] - 2026-10-18
-> 性能专版，因涉及 C/WASM 架构升级，单独记录。
 ### Performance
 - **C/WASM 模糊引擎**：手写 C 语言编译 WASM。
 - **零分配 JS 兜底**：短字符串 1.6 微秒极速比对。
