@@ -96,6 +96,10 @@ tred replace --file main.ts --selector '{"kind":"file","scope":"tail","line":50}
 ❌ op[0]: 缺少 "file" 字段
 ```
 
+### 4. 人类友好的错误诊断
+当代码发生语法校验失败或断言失败时，tred 不仅会拒绝写入，还会直接打印出**局部原代码**与**你的新代码**的对比，方便你一眼定位问题。
+同时，所有报错上下文都会保存在 `.tred/last-failure.json` 中。
+
 ## 完整命令矩阵
 
 | 命令 | 描述 |

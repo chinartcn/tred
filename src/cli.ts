@@ -251,7 +251,14 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
       process.stdout.write('        错误:\n');
       for (const e of r.syntaxErrors) process.stdout.write('          ' + e + '\n');
     }
-    if (r.diff) process.stdout.write('\n' + r.diff);
+    if (r.status === 'failed' && r.failureContext) {
+      process.stdout.write('\n        ⚠️ 原代码 (将被替换):\n');
+      process.stdout.write(r.failureContext.oldCode.split('\n').map((l: string) => '          ' + l).join('\n') + '\n');
+      process.stdout.write('\n        ⚠️ 你的新代码 (导致失败):\n');
+      process.stdout.write(r.failureContext.newCode.split('\n').map((l: string) => '          ' + l).join('\n') + '\n');
+    } else if (r.diff) {
+      process.stdout.write('\n' + r.diff);
+    }
   }
   return r.status === 'failed' ? 1 : 0;
 }

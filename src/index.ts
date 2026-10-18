@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { updateAnchorState, getAnchorState } from './state.js';
 import { getParser } from './parsers/index.js';
 import { detectIndent, findAllAnchors, formatAnchor } from './anchor.js';
@@ -62,6 +62,28 @@ interface ComputeOutcome {
 }
 
 // @TRED_START: COMPUTE_REPLACE | fp=354fbefa
+interface ComputeOutcome {
+  nextSource: string | null;
+  status: ReplaceStatus;
+  message?: string;
+  syntaxErrors?: string[];
+  diff?: string;
+  failureContext?: { oldCode: string; newCode: string };
+}
+
+function saveFailureCache(file: string, reason: string, context?: { oldCode: string; newCode: string }) {
+  try {
+    mkdirSync('.tred', { recursive: true });
+    writeFileSync('.tred/last-failure.json', JSON.stringify({
+      timestamp: new Date().toISOString(),
+      file,
+      reason,
+      oldCode: context?.oldCode || null,
+      newCode: context?.newCode || null
+    }, null, 2));
+  } catch (e) { /* 忽略 */ }
+}
+
 async function computeReplace(original: string, opts: ReplaceOptions): Promise<ComputeOutcome> {
   const file = opts.file;
   const content = opts.content;
@@ -71,9 +93,8 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
   let status: 'injected' | 'replaced' = 'replaced';
   let indent = '';
 
-  // v2.0.0: 多语言解析路由
   const parser = getParser(file);
-  
+
   if (opts.selector && opts.selector.kind === 'file') {
     const fs2 = opts.selector as any;
     const lines = original.split('\n');
@@ -110,7 +131,6 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
     if (!range) return { nextSource: null, status: 'failed', message: 'AST 找不到节点 (Parser: ' + file + ')' };
     status = 'replaced';
   } else if (opts.anchor && parser && opts.anchor.startsWith('auto-')) {
-    // 从 state.json 里读取
     const state = getAnchorState(file, opts.anchor);
     if (!state) return { nextSource: null, status: 'failed', message: '找不到外部锚点记录: ' + opts.anchor };
     const sig = JSON.parse(state.astSignature);
@@ -119,9 +139,7 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
     status = 'replaced';
   } else if (opts.anchor) {
     const allAnchors = findAllAnchors(original, opts.anchor, opts.fuzzy);
-    if (allAnchors.length > 1) {
-      return { nextSource: null, status: 'failed', message: '锚点名 "' + opts.anchor + '" 出现多次' };
-    }
+    if (allAnchors.length > 1) return { nextSource: null, status: 'failed', message: '锚点名出现多次' };
     const block = allAnchors[0];
     if (block) {
       if (block.fp === fingerprint) return { nextSource: null, status: 'skipped', message: '指纹一致，跳过' };
@@ -151,39 +169,46 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
     return { nextSource: null, status: 'failed', message: '缺少定位条件' };
   }
 
-  if (!range) {
-    return { nextSource: null, status: 'failed', message: '内部错误：找不到有效的范围' };
-  }
+  if (!range) return { nextSource: null, status: 'failed', message: '内部错误：找不到有效的范围' };
 
   const normalized = normalizeContent(content).replace(/\n+$/, '');
+  let newBlock = '';
+  if (status === 'injected') {
+    newBlock = buildBlock(opts.anchor!, fingerprint, content, indent);
+  } else if (opts.anchor) {
+    newBlock = buildBlock(opts.anchor, fingerprint, content, indent);
+  } else {
+    newBlock = indentLines(normalized, indent);
+  }
+
+  const oldCode = original.slice(range.start, range.end);
+  const failureContext = { oldCode, newCode: newBlock };
+
   if (opts.assertions) {
     const assertErrors = checkAssertions(normalized, opts.assertions);
-    if (assertErrors.length > 0) return { nextSource: null, status: 'failed', message: '智能断言失败', syntaxErrors: assertErrors };
+    if (assertErrors.length > 0) {
+      saveFailureCache(file, '智能断言失败', failureContext);
+      return { nextSource: null, status: 'failed', message: '智能断言失败', syntaxErrors: assertErrors, failureContext };
+    }
   }
 
   let nextSource = '';
   if (status === 'injected') {
-    const newBlock = buildBlock(opts.anchor!, fingerprint, content, indent);
     const lineStart = range.start - indent.length;
     nextSource = original.slice(0, lineStart) + newBlock + original.slice(range.end);
-  } else if (opts.anchor) {
-    const newBlock = buildBlock(opts.anchor, fingerprint, content, indent);
-    nextSource = original.slice(0, range.start) + newBlock + original.slice(range.end);
   } else {
-    // 如果非 TS 语言，或者无锚点替换，直接塞入 rawContent
-    const body = indentLines(normalized, indent);
-    nextSource = original.slice(0, range.start) + body + original.slice(range.end);
+    nextSource = original.slice(0, range.start) + newBlock + original.slice(range.end);
   }
 
   if (opts.format) {
     try {
       nextSource = await opts.format(nextSource, file);
     } catch (e) {
-      return { nextSource: null, status: 'failed', message: '格式化失败: ' + (e instanceof Error ? e.message : String(e)) };
+      saveFailureCache(file, '格式化失败', failureContext);
+      return { nextSource: null, status: 'failed', message: '格式化失败: ' + (e instanceof Error ? e.message : String(e)), failureContext };
     }
   }
 
-  // v2.1.0: 多语言统一的语法门禁
   let syntaxErrors: string[] = [];
   const isTsLike = /\.[jt]sx?$/.test(file);
   if (isTsLike) {
@@ -193,13 +218,8 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
   }
 
   if (syntaxErrors.length > 0) {
-    return { nextSource: null, status: 'failed', message: '语法校验失败，拒绝写入', syntaxErrors };
-  }
-  // v2.0.0: 自动保存状态追踪
-  if (!isTsLike && opts.selector) {
-    const startLine = original.slice(0, range.start).split('\n').length;
-    const sig = JSON.stringify(opts.selector);
-    updateAnchorState(file, 'auto-' + startLine, startLine, sig, fingerprint);
+    saveFailureCache(file, '语法校验失败', failureContext);
+    return { nextSource: null, status: 'failed', message: '语法校验失败，拒绝写入', syntaxErrors, failureContext };
   }
 
   const diff = unifiedDiff(original, nextSource, 'a/' + file, 'b/' + file);
@@ -216,6 +236,7 @@ export async function replace(opts: ReplaceOptions): Promise<ReplaceResult> {
   const result: ReplaceResult = {
     status: c.status, file: opts.file, anchor: opts.anchor,
     message: c.message, syntaxErrors: c.syntaxErrors,
+    failureContext: c.failureContext, // 👈 补上这个，CLI 才能拿到
   };
   if (opts.dryRun) {
     result.diff = c.diff;

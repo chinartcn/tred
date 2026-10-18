@@ -109,6 +109,10 @@ export async function runOps(filePath: string, flags: Record<string, string | tr
           hasError = true;
           console.error('  ❌ ' + (r.message || 'replace 失败'));
           if (r.syntaxErrors) r.syntaxErrors.forEach((e: string) => console.error('     ' + e));
+          if (r.failureContext) {
+            console.error('\n  ⚠️ 原代码:\n' + r.failureContext.oldCode.split('\n').map((l: string) => '     ' + l).join('\n'));
+            console.error('\n  ⚠️ 你的新代码:\n' + r.failureContext.newCode.split('\n').map((l: string) => '     ' + l).join('\n'));
+          }
         } else {
           console.log('  ✓ ' + r.status);
         }

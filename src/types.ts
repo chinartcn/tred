@@ -64,6 +64,11 @@ export interface ReplaceOptions {
 
 export type ReplaceStatus = 'replaced' | 'skipped' | 'injected' | 'failed';
 
+export interface FailureContext {
+  oldCode: string;
+  newCode: string;
+}
+
 export interface ReplaceResult {
   status: ReplaceStatus;
   file: string;
@@ -71,6 +76,7 @@ export interface ReplaceResult {
   message?: string;
   syntaxErrors?: string[];
   diff?: string;
+  failureContext?: FailureContext;
 }
 
 export type BatchStatus = 'committed' | 'rolled-back' | 'dry-run' | 'partial';
