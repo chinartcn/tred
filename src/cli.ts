@@ -188,13 +188,29 @@ async function cmdPatch(flagsRaw: Record<string, string | true | string[]>, posi
   } else {
     patchText = readFileSync(0, 'utf-8');
   }
+
   const fuzzy = Boolean(flags.fuzzy);
   const fuzzyThreshold = typeof flags['fuzzy-threshold'] === 'string' ? parseFloat(flags['fuzzy-threshold']) : undefined;
-  const res = applyPatch(file, patchText, { fuzzy, fuzzyThreshold });
+  const minRareTokens = typeof flags['fuzzy-min-rare'] === 'string' ? parseInt(flags['fuzzy-min-rare'], 10) : undefined;
+  const res = applyPatch(file, patchText, { fuzzy, fuzzyThreshold, minRareTokens });
+
   if (!res.ok) {
     console.error('❌ [tred patch] ' + res.message);
+    if (res.suggestion) {
+      console.log('\n💡 [tred suggest] 发现第 ' + res.suggestion.line + ' 行有 ' + (res.suggestion.score * 100).toFixed(1) + '% 相似度的代码块，' + res.suggestion.reason);
+      console.log('   -----------------------------');
+      res.suggestion.context.forEach((line: string, i: number) => {
+        const lineNum = res.suggestion!.line - 2 + i;
+        console.log('   ' + String(lineNum).padStart(4) + ' | ' + line);
+      });
+      console.log('   -----------------------------');
+      const nextThresh = Math.max(0, res.suggestion.score - 0.05);
+      console.log('   如果你确认这是正确的目标，可以尝试降低阈值：');
+      console.log('   tred patch --file ' + file + ' ... --fuzzy --fuzzy-threshold ' + nextThresh.toFixed(2));
+    }
     return 1;
   }
+
   console.log('✓ Patch 应用成功: ' + file);
   return 0;
 }

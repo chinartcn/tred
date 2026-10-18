@@ -84,3 +84,6 @@ tred patch --file a.ts diff.patch --fuzzy --fuzzy-min-rare 1
 ```
 
 核心原则：**"打不上"比"打错了"安全**。模糊匹配只在显式 `--fuzzy` 时启用，且要求 hunk 具备足够的稀有标识符作为锚点。
+
+## 8. 遇到打不上补丁怎么办？
+如果你的 diff 匹配分数不够（如 88%），`tred` 会提示你。你可以复制它给出的 `--fuzzy-threshold` 命令直接重试。

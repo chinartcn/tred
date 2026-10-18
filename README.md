@@ -72,6 +72,21 @@ tred replace --file main.ts \
 2. **微创修改**：使用 `tred patch`，AI 只需生成极小的 `+` 和 `-` 行，大幅减少出错率和 Token 消耗。
 3. **零误伤**：底层自带语法门禁，哪怕 AI 补丁写错，也绝不破坏原有代码。
 
+## 💡 智能纠错建议 (v3.4.0)
+如果 `tred patch` 因为阈值过高打不上，它不会只丢给你一个报错，而是会直接输出**最优匹配候选的上下文**，并自动生成降低阈值的重试命令：
+```text
+💡 [tred suggest] 发现第 9 行有 98.9% 相似度的代码块，是不是想改这里？
+   -----------------------------
+      7 |     id: "core:chest",
+      8 |     inputs: [{ id: STONE_ITEM, count: 8 }],
+      9 |     output: { id: CHEST, count: 2 },
+     10 |     needsTable: true,
+     11 |   },
+   -----------------------------
+   如果你确认这是正确的目标，可以尝试降低阈值：
+   tred patch --file ... --fuzzy --fuzzy-threshold 0.94
+```
+
 ## 📖 更多文档
 完整的 CLI 命令（包含 `replace-many`、`verify`、`strip` 等）与 API 用法，请参阅 [api.md](./api.md)。
 

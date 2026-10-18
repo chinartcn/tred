@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.4.0] - 2026-10-18
+### Added
+- **智能纠错建议 (`tred suggest`)**：当 `tred patch --fuzzy` 失败时，自动展示最佳候选的上下文，并生成降低阈值的重试命令。
+
 ## [3.3.6] - 2026-10-18
 ### Performance
 - **Rare-Token × TF-IDF 模糊匹配**：`tred patch --fuzzy` 基于稀有标识符与 TF-IDF 加权评分，大幅降低结构相似代码（如配方面板）的误伤率。
