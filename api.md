@@ -68,9 +68,15 @@ tred impact <targetName> [--dir <path>]
 
 ### 6. `tred split` 自动拆分
 ```bash
+# 提取顶层函数
 tred split --file <path> --name <func1,func2> --to <new.ts>
+
+# 提取类方法（自动处理 this 上下文）
+tred split --file <path> --class <ClassName> --name <method1,method2> --to <new.ts>
 ```
-自动提取原文件中的顶层函数到新文件，并自动修复原文件的 import 和新文件的 export。
+- **顶层函数拆分**：自动移动函数定义，并维护原文件的 export。
+- **类方法拆分**：将方法转为带 `this` 参数的独立函数，并自动追加 `Object.assign(ClassName.prototype, { ... })` 混入，零破坏原对象架构。
+- 自动执行 Dedent 与空行清理。
 
 ### 7. 其他高频命令简表
 

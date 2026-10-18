@@ -162,7 +162,8 @@ async function cmdSplit(flagsRaw: Record<string, string | true | string[]>, posi
   const name = requireStr(flags, 'name');
   const to = requireStr(flags, 'to');
   const targets = name.split(',').map(s => s.trim());
-  const res = splitFile(file, targets, to);
+  const targetClass = typeof flags['class'] === 'string' ? flags['class'] : undefined;
+  const res = splitFile(file, targets, to, targetClass);
   if (!res.ok) { console.error('❌ [tred split] ' + res.message); return 1; }
   console.log('✅ [tred split] ' + res.message);
   return 0;

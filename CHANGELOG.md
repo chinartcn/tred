@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.6.0] - 2026-10-18
+### Added
+- **`tred split` 支持类方法提取**：新增 `--class <ClassName>` 参数，自动从大型类中剥离指定方法。
+- **原型注入 (Prototype Mixin)**：拆分出的方法自动转换为 `this` 参数格式，原类通过 `Object.assign` 混入，保留 `this` 上下文且零破坏。
+- **代码美化**：拆分时自动执行 Dedent（缩进修正）与连续空行清理，确保代码格式与手写一致。
+
 ## [3.5.1] - 2026-10-18
 ### Fixed
 - 修复 `api.md` 未能同步 `tred patch --auto-heal` 和 `--html` 等新特性的问题。
