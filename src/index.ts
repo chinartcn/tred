@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { updateAnchorState, getAnchorState } from './state.js';
+import { getParser } from './parsers/index.js';
 import { detectIndent, findAllAnchors, formatAnchor } from './anchor.js';
 import { findNodeRange } from './ast.js';
 import { findSnippetRange } from './snippet.js';
@@ -59,6 +61,7 @@ interface ComputeOutcome {
   diff?: string;
 }
 
+// @TRED_START: COMPUTE_REPLACE | fp=354fbefa
 async function computeReplace(original: string, opts: ReplaceOptions): Promise<ComputeOutcome> {
   const file = opts.file;
   const content = opts.content;
@@ -68,7 +71,22 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
   let status: 'injected' | 'replaced' = 'replaced';
   let indent = '';
 
-  if (opts.anchor) {
+  // v2.0.0: 多语言解析路由
+  const parser = getParser(file);
+  
+  if (opts.selector && parser) {
+    range = parser.findNode(original, opts.selector);
+    if (!range) return { nextSource: null, status: 'failed', message: 'AST 找不到节点 (Parser: ' + file + ')' };
+    status = 'replaced';
+  } else if (opts.anchor && parser && opts.anchor.startsWith('auto-')) {
+    // 从 state.json 里读取
+    const state = getAnchorState(file, opts.anchor);
+    if (!state) return { nextSource: null, status: 'failed', message: '找不到外部锚点记录: ' + opts.anchor };
+    const sig = JSON.parse(state.astSignature);
+    range = parser.findNode(original, sig);
+    if (!range) return { nextSource: null, status: 'failed', message: '根据 AST 特征未能找到节点' };
+    status = 'replaced';
+  } else if (opts.anchor) {
     const allAnchors = findAllAnchors(original, opts.anchor, opts.fuzzy);
     if (allAnchors.length > 1) {
       return { nextSource: null, status: 'failed', message: '锚点名 "' + opts.anchor + '" 出现多次' };
@@ -85,25 +103,26 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
       const astRange = findNodeRange(file, original, opts.astSelector);
       if (!astRange) return { nextSource: null, status: 'failed', message: 'AST 找不到节点' };
       range = astRange;
-      indent = detectIndent(original, range!.start);
+      indent = detectIndent(original, range.start);
       status = 'injected';
     }
   } else if (opts.snippetSelector) {
     const snipRange = findSnippetRange(original, opts.snippetSelector);
     if (!snipRange) return { nextSource: null, status: 'failed', message: '找不到匹配的代码片段' };
     range = snipRange;
-    indent = detectIndent(original, range!.start);
+    indent = detectIndent(original, range.start);
   } else if (opts.astSelector) {
     const astRange = findNodeRange(file, original, opts.astSelector);
     if (!astRange) return { nextSource: null, status: 'failed', message: 'AST 找不到节点' };
     range = astRange;
-    indent = detectIndent(original, range!.start);
+    indent = detectIndent(original, range.start);
   } else {
-    return { nextSource: null, status: 'failed', message: '缺少定位条件 (anchor / astSelector / snippetSelector)' };
+    return { nextSource: null, status: 'failed', message: '缺少定位条件' };
   }
 
-  // 💥 强制收窄类型，解决 TS 严格模式报错
-  const finalRange = range as { start: number; end: number };
+  if (!range) {
+    return { nextSource: null, status: 'failed', message: '内部错误：找不到有效的范围' };
+  }
 
   const normalized = normalizeContent(content).replace(/\n+$/, '');
   if (opts.assertions) {
@@ -114,14 +133,15 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
   let nextSource = '';
   if (status === 'injected') {
     const newBlock = buildBlock(opts.anchor!, fingerprint, content, indent);
-    const lineStart = finalRange.start - indent.length;
-    nextSource = original.slice(0, lineStart) + newBlock + original.slice(finalRange.end);
+    const lineStart = range.start - indent.length;
+    nextSource = original.slice(0, lineStart) + newBlock + original.slice(range.end);
   } else if (opts.anchor) {
     const newBlock = buildBlock(opts.anchor, fingerprint, content, indent);
-    nextSource = original.slice(0, finalRange.start) + newBlock + original.slice(finalRange.end);
+    nextSource = original.slice(0, range.start) + newBlock + original.slice(range.end);
   } else {
+    // 如果非 TS 语言，或者无锚点替换，直接塞入 rawContent
     const body = indentLines(normalized, indent);
-    nextSource = original.slice(0, finalRange.start) + body + original.slice(finalRange.end);
+    nextSource = original.slice(0, range.start) + body + original.slice(range.end);
   }
 
   if (opts.format) {
@@ -132,14 +152,29 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
     }
   }
 
-  const syntaxErrors = checkSyntax(file, nextSource);
+  // v2.1.0: 多语言统一的语法门禁
+  let syntaxErrors: string[] = [];
+  const isTsLike = /\.[jt]sx?$/.test(file);
+  if (isTsLike) {
+    syntaxErrors = checkSyntax(file, nextSource);
+  } else if (parser) {
+    syntaxErrors = parser.checkSyntax(nextSource);
+  }
+
   if (syntaxErrors.length > 0) {
     return { nextSource: null, status: 'failed', message: '语法校验失败，拒绝写入', syntaxErrors };
+  }
+  // v2.0.0: 自动保存状态追踪
+  if (!isTsLike && opts.selector) {
+    const startLine = original.slice(0, range.start).split('\n').length;
+    const sig = JSON.stringify(opts.selector);
+    updateAnchorState(file, 'auto-' + startLine, startLine, sig, fingerprint);
   }
 
   const diff = unifiedDiff(original, nextSource, 'a/' + file, 'b/' + file);
   return { nextSource, status, diff };
 }
+// @TRED_END: COMPUTE_REPLACE
 
 export async function replace(opts: ReplaceOptions): Promise<ReplaceResult> {
   if (!existsSync(opts.file)) {

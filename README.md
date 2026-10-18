@@ -1,39 +1,43 @@
 # @rtcn/tred
 
-> Anchor + AST precise find-and-replace with syntax validation, atomic writes, and idempotent fingerprints.
+> 终极代码与文本重构引擎：**六大语言支持**，自带 **AST 定位**、**语法门禁**与**状态追踪**。
 
-## 为什么需要 tred？
+## 为什么是 tred？
 
-传统的正则替换遇到代码缩进、嵌套括号、同名变量就会直接崩溃；纯 AST 方案（如 jscodeshift）依赖重、学习成本高。
+传统的正则替换遇到复杂嵌套就会崩溃，而重度依赖 AST 重构又面临陡峭的学习曲线。
+tred 提出了 **“锚点 + AST + 模糊状态”** 的三轨制解析方案：
 
-tred 提供了一套**“锚点 + AST + Snippet”三轨制**的代码替换引擎。它天生带安全护栏：**语法编译门禁、智能断言、原子写入**。不仅能改代码，还能像流水线一样跑 `ops.json` 声明式任务。
-
-## 安装
-
-```bash
-npm i -D @rtcn/tred
-```
-要求 Node.js >= 20。
+1. **多语言解析**：原生支持 TS / JS / JSON / Markdown / HTML / CSS。
+2. **零妥协安全**：替换前必须通过原生编译器的**语法校验**（如 `tsc` 检查 JS，`postcss` 检查 CSS），写坏代码绝不允许落盘。
+3. **声明式流水线**：用 `tred ops` 组合任意操作，像流水线一样重构代码。
 
 ## 快速开始
 
 ```bash
-# 1. 看代码结构（生成可直接用于 replace 的 selector）
-tred ast --file src/main.ts
-
-# 2. 自动给代码加锚点（注释块）
-tred annotate --dir src --all --apply
-
-# 3. 基于锚点精准替换
-tred replace --file src/main.ts \
-  --anchor "GraphEngine#loadUnlocked" \
-  --content-file new-body.ts \
-  --fp-source migrator --fp-version 1
+npm i -D @rtcn/tred
 ```
 
-## 声明式引擎：`tred ops`
+### 1. 万物皆可定位
 
-用 JSON 定义一连串修改动作，一步到位。**遇到错误自动中止**，并把所有改动作为一个“事务”处理。
+无论你改什么文件，只要给它一个“选择器”：
+
+```bash
+# 改 TS/JS：用 AST
+tred replace --file a.ts --selector '{"kind":"method","className":"Engine","methodName":"run"}' --content-file new.ts
+
+# 改 JSON：用对象路径
+tred replace --file package.json --selector '{"path":"version"}' --content '"2.0.0"'
+
+# 改 CSS：用 CSS 选择器
+tred replace --file style.css --selector '{"selector":".btn"}' --content-file btn.css
+
+# 改 Markdown：定位代码块或标题
+tred replace --file README.md --selector '{"codeLang":"js"}' --content-file demo.js
+```
+
+### 2. 声明式编排 (`ops.json`)
+
+告别凌乱的脚本，用 JSON 定义整条重构流水线：
 
 ```json
 {
@@ -42,68 +46,38 @@ tred replace --file src/main.ts \
     {
       "type": "replace",
       "file": "src/engine.ts",
-      "selector": { "kind": "method", "className": "Engine", "methodName": "run", "occurrence": 2 },
-      "content": "run() { /* new logic */ }"
+      "anchor": "Engine#run",
+      "content": "run() { /* new logic */ }",
+      "assertions": { "hasAst": ["method:run"] }
     },
     { "type": "verify", "dir": "src", "strict": true }
   ]
 }
 ```
 
-运行：`tred ops ops.json --dry-run` 或 `tred ops ops.json`。
+一键执行：`tred ops ops.json`
 
-## 核心定位器
+### 3. 隐形状态追踪 (`.tred/state.json`)
 
-1. **锚点匹配**（推荐）：基于 `// @TRED_START: Name` 注释。
-2. **Snippet 片段**：无需加注释，直接用行号或起止字符串定位。
-   ```bash
-   tred replace --file a.ts --snippet-start "function foo()" --snippet-end "return true;" --content-file new.ts
-   ```
-3. **AST 选择器**：精准到节点，支持处理同名冲突。
-   ```bash
-   # 替换第 2 个 run 方法
-   tred replace --file a.ts --selector '{"kind":"method","className":"Engine","methodName":"run","occurrence":2}' --content "run() {}"
-   ```
+如果文件不允许写注释（如 JSON、MD、HTML），tred 会自动生成 `.tred/state.json` 记录**模糊行号与 AST 特征**。下次替换时，即使文件被外部工具篡改了行数，tred 也能通过 AST 特征瞬间找回目标。
 
-## 安全护栏（智能断言）
+### 4. 极速安全闭环 (`tred commit`)
 
-替换前，强制要求新内容满足特定条件，否则拒绝写入：
+```bash
+tred commit -m "feat: refactored ui"
+```
+自动执行 `verify` 拦截错误，并帮你完成 `git add` 和 `git commit`，坏代码连提交的机会都没有。
 
-- `--fuzzy`：模糊匹配锚点名（忽略大小写、允许冒号带空格）。
-- `--assert-include <str>` / `--assert-exclude <str>`：内容必须/禁止包含某字符串。
-- `--assert-regex <re>`：内容必须匹配某正则。
-- `--assert-has-ast <k:n>` / `--assert-no-ast <k:n>`：**强力 AST 断言**。如 `--assert-has-ast "method:run"` 确保替换后代码里依然有 `run` 方法。
-
-## 完整命令表
+## 完整命令矩阵
 
 | 命令 | 描述 |
 |---|---|
-| `tred replace` | 单文件精准替换（支持锚点 / Snippet / AST） |
-| `tred replace-many` | 批量事务替换（失败回滚） |
-| `tred ops` | 声明式执行 JSON 脚本 |
-| `tred ast` | 查看 AST 大纲 |
-| `tred annotate` | 自动加锚点（单文件 / 目录） |
-| `tred verify` | 检查锚点孤儿 / 重复 / 指纹不一致 |
-| `tred verify --fix` | 修复孤儿 END |
-| `tred diff` | 锚点级 / 目录级代码对比 |
-| `tred serve` | 起 HTTP 服务查看 HTML 报告 |
-| `tred watch` | 监听变化自动 verify |
-| `tred check` | 组合验证（CI / pre-commit） |
-| `tred init` | 生成配置和 git hook |
-| `tred doctor` | 环境与依赖诊断 |
-
-## CI / 自动化
-
-```bash
-# GitHub PR 原生注释（红叉显示在 diff 上）
-tred verify --dir src --format github-annotations
-
-# 生成 SARIF 报告（上传到 Code Scanning）
-tred verify --dir src --format sarif > tred.sarif
-
-# 只检查 git 改动过的文件（极速）
-tred verify --dir src --since origin/main --strict
-```
+| `tred replace` | 单文件精准替换（支持锚点 / Snippet / 多语言 AST） |
+| `tred ops` | 声明式执行 JSON 脚本流水线 |
+| `tred commit` | 自动验证 + 安全提交 |
+| `tred verify` | 检查锚点健康度、孤儿、重复与多语言状态 |
+| `tred annotate` | 自动给 TS/JS 代码加锚点注释 |
+| `tred serve` | 生成 HTML 报告并在本地预览 |
 
 ## License
 

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "tracked": {
+    ".tred-tmp/test.css": {
+      "auto-1": {
+        "approxLine": 1,
+        "astSignature": "{\"selector\":\".btn\",\"__res\":{\"start\":0,\"end\":21}}",
+        "fingerprint": "",
+        "updatedAt": "2026-10-18T04:21:35.390Z"
+      }
+    },
+    ".tred-tmp/test.html": {
+      "auto-1": {
+        "approxLine": 1,
+        "astSignature": "{\"cssSelector\":\"#title\"}",
+        "fingerprint": "",
+        "updatedAt": "2026-10-18T04:21:41.395Z"
+      }
+    },
+    ".tred-tmp/ok.html": {
+      "auto-1": {
+        "approxLine": 1,
+        "astSignature": "{\"cssSelector\":\"#title\"}",
+        "fingerprint": "",
+        "updatedAt": "2026-10-18T04:24:44.120Z"
+      }
+    }
+  }
+}

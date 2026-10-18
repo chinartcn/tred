@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "tracked": {
+    "README.md": {
+      "anchors": {
+        "install-guide": {
+          "type": "markdown-heading",
+          "astPath": "heading:h2:安装指南",
+          "approxLine": 12,
+          "fingerprint": "a1b2c3d4"
+        }
+      }
+    }
+  }
+}

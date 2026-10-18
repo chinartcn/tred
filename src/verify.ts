@@ -1,7 +1,8 @@
-import { readFileSync, readdirSync, type Dirent } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { isCacheHit, loadCache, saveCache, statFile } from './cache.js';
 import { getChangedFiles, isGitRepo } from './git.js';
+import { loadState } from './state.js';
 import { matchesAnyGlob } from './glob.js';
 import type {
   VerifyAnchorEntry,
@@ -221,7 +222,18 @@ export function verifyDir(opts: VerifyOptions): VerifyReport {
       }
     }
   }
-  walk(opts.dir);
+  const isSingleFile = existsSync(opts.dir) && statSync(opts.dir).isFile();
+  if (isSingleFile) {
+    const rel = relative(process.cwd(), opts.dir) || opts.dir;
+    const source = readFileSync(opts.dir, 'utf-8');
+    scannedFiles++;
+    const scan = scanFileAnchors(source);
+    if (scan.anchors.length > 0 || scan.orphans.length > 0) {
+      files.push({ file: rel, anchors: scan.anchors, orphans: scan.orphans });
+    }
+  } else {
+    walk(opts.dir);
+  }
 
   if (useCache) {
     if (oldCache) {
@@ -307,6 +319,32 @@ export function verifyDir(opts: VerifyOptions): VerifyReport {
       code: 'FP_MISMATCH',
       message: '锚点 "' + m.name + '" 跨文件指纹不一致',
     });
+  }
+
+  // v2.2.0: 检查 .tred/state.json 中的外部锚点
+  if (opts.dir === '.' || opts.dir === process.cwd()) {
+    const state = loadState();
+    for (const relFile of Object.keys(state.tracked)) {
+      const absPath = resolve(opts.dir, relFile);
+      if (!existsSync(absPath)) {
+        issues.push({
+          level: 'error',
+          code: 'STATE_FILE_MISSING',
+          file: relFile,
+          message: '记录在 state.json 中的文件已丢失',
+        });
+        continue;
+      }
+      for (const [anchorName, anchorState] of Object.entries(state.tracked[relFile])) {
+        issues.push({
+          level: 'warning',
+          code: 'STATE_ANCHOR',
+          file: relFile,
+          line: anchorState.approxLine,
+          message: '外部锚点 [' + anchorName + '] (AST: ' + anchorState.astSignature + ')',
+        });
+      }
+    }
   }
 
   const hasError = issues.some(function (i) { return i.level === 'error'; });

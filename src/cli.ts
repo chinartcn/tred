@@ -1,4 +1,5 @@
 import type { SnippetSelector } from './types.js';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { runOps } from './ops.js';
 import { annotateDir, annotateFile, buildOutline, diffAnchor, diffDir, fixDir, makeFingerprint, replace, replaceMany, verifyDir, renderVerifyMarkdown, renderFixMarkdown, diffDirGit, renderDiffDirMarkdown, renderAnnotateDirMarkdown, doctor, buildBaseline, loadBaseline, saveBaseline, filterIssuesByBaseline, init, renderGithubAnnotations, renderFixGithubAnnotations, watchDir, getDiffLines, renderSarif, renderHtml, serveHtml, tryOpenBrowser } from './index.js';
@@ -165,8 +166,8 @@ function resolveFingerprint(flags: Record<string, string | true>, anchor: string
   die('必须提供 --fp，或 --fp-source + --fp-version 自动生成指纹');
 }
 
+// @TRED_START: CLI_REPLACE | fp=1d2a4932
 async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): Promise<number> {
-  // 为了兼容老函数，把 array 降维成最后一个 string
   const flags: Record<string, string | true> = {};
   for (const k of Object.keys(flagsRaw)) {
     const v = flagsRaw[k];
@@ -183,8 +184,16 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
   }
 
   let astSelector: AstSelector | undefined;
+  let genericSelector: any;
   if (typeof flags.selector === 'string') {
-    try { astSelector = JSON.parse(flags.selector) as AstSelector; } catch { die('--selector 必须是合法 JSON'); }
+    try {
+      genericSelector = JSON.parse(flags.selector);
+      if (['class','method','function','statement','variable'].includes(genericSelector.kind)) {
+        astSelector = genericSelector as AstSelector;
+      }
+    } catch {
+      die('--selector 必须是合法 JSON');
+    }
   }
   
   const toArr = (v: any) => (Array.isArray(v) ? v : v ? [v] : undefined);
@@ -200,7 +209,7 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
 
   const hasSnippet = Object.keys(snippetSelector).length > 0;
 
-  if (!anchor && !astSelector && !hasSnippet) {
+  if (!anchor && !astSelector && !genericSelector && !hasSnippet) {
     die('必须提供 --anchor 或 --selector 或 --snippet-* 之一');
   }
 
@@ -217,6 +226,7 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
     autoInjectAnchor: Boolean(flags['auto-inject']),
     fuzzy: Boolean(flags.fuzzy),
     astSelector,
+    selector: genericSelector,
     snippetSelector: hasSnippet ? snippetSelector : undefined,
     assertions: {
       include: toArr(flagsRaw['assert-include']),
@@ -227,7 +237,7 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
     },
     format: await buildFormatter(flags),
   };
-
+  
   const r = await replace(opts);
 
   if (flags.json) {
@@ -243,6 +253,7 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
   }
   return r.status === 'failed' ? 1 : 0;
 }
+// @TRED_END: CLI_REPLACE
 
 function renderTree(nodes: OutlineNode[], prefix: string): string[] {
   const out: string[] = [];
@@ -1016,6 +1027,7 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (cmd === 'serve')        { process.exit(await cmdServe(flags)); }
   
   // v1.3.0: ops 声明式执行
+  if (cmd === 'commit')       { process.exit(await cmdCommit(flags)); }
   if (cmd === 'ops' || (cmd && cmd.endsWith('.json'))) {
     const opsFile = cmd.endsWith('.json') ? cmd : positionals[1];
     if (!opsFile) die('用法: tred ops <ops.json>');
@@ -1035,4 +1047,33 @@ if (__isCliEntry) {
     process.stderr.write('tred: ' + (e instanceof Error ? e.message : String(e)) + '\n');
     process.exit(1);
   });
+}
+
+
+async function cmdCommit(flags: Record<string, string | true | string[]>): Promise<number> {
+  const msg = typeof flags.message === 'string' ? flags.message : 'tred: auto commit';
+  console.log('[tred commit] 执行前置验证...');
+  
+  // 1. 跑 verify
+  const v = await cmdVerify({ ...flags, strict: true });
+  if (v !== 0) {
+    console.error('[tred commit] ❌ 验证失败，已中止提交');
+    return 1;
+  }
+
+  // 2. 跑 git add
+  console.log('[tred commit] git add -A');
+  const add = spawnSync('git', ['add', '-A'], { stdio: 'inherit' });
+  if (add.status !== 0) return 1;
+
+  // 3. 跑 git commit
+  console.log('[tred commit] git commit -m "' + msg + '"');
+  const commit = spawnSync('git', ['commit', '-m', msg], { stdio: 'inherit' });
+  if (commit.status !== 0) {
+    // 如果没有文件变更，git 会返回非 0
+    return 1;
+  }
+
+  console.log('[tred commit] ✅ 提交成功！');
+  return 0;
 }

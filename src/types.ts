@@ -45,6 +45,8 @@ export interface ReplaceOptions {
   fingerprint: string;
   autoInjectAnchor?: boolean;
   astSelector?: AstSelector;
+  /** v2.0.0: 通用选择器，供多语言 Parser 使用 */
+  selector?: any;
   snippetSelector?: SnippetSelector;
   dryRun?: boolean;
   format?: Formatter;
