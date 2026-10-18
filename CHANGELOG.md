@@ -6,6 +6,11 @@
 
 # Changelog
 
+## [2.8.0] - 2026-10-18
+### Added
+- **模糊向量引擎**：支持 `fuzzy: true`，将代码名称拆解为词根并计算 Dice 相似度。即使拼写错误（如 `update status`）也能精准命中 AST 节点（如 `updateStatsPanel`）。
+- 词法解析原生支持中文字符（如 `TECHS.铁矿机`）。
+
 ## [2.7.0] - 2026-10-18
 ### Added
 - **深度 AST 支持**：支持 `arrow-function`（自动向上提级包含 `const` 声明）和嵌套 `property`（支持带引号的中文键名，只替换值）。

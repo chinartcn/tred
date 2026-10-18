@@ -1,10 +1,8 @@
 import ts from 'typescript';
 import type { AstSelector } from './types.js';
+import { getSimilarity } from './fuzzy.js';
 
-export interface NodeRange {
-  start: number;
-  end: number;
-}
+export interface NodeRange { start: number; end: number; }
 
 export function findNodeRange(
   fileName: string,
@@ -12,89 +10,80 @@ export function findNodeRange(
   sel: AstSelector,
 ): NodeRange | null {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
-  const matches: ts.Node[] = [];
+  let matches: ts.Node[] = [];
   const occurrence = sel.occurrence ?? 1;
 
-  // 核心匹配函数：如果匹配成功，返回需要替换的完整节点（可能向上提级）
-  function getTargetNode(node: ts.Node): ts.Node | null {
-    // 1. class
-    if (sel.kind === 'class' && ts.isClassDeclaration(node) && node.name?.text === sel.className) {
-      return node;
-    }
-
-    // 2. method
-    if (sel.kind === 'method' && ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name) && node.name.text === sel.methodName) {
-      if (!sel.className) return node;
-      if (ts.isClassDeclaration(node.parent) && node.parent.name?.text === sel.className) return node;
-      return null;
-    }
-
-    // 3. function / arrow-function
-    if (sel.kind === 'function' || sel.kind === 'arrow-function') {
-      const isArrow = ts.isArrowFunction(node);
-      const isFuncExpr = ts.isFunctionExpression(node);
-      const isFuncDecl = ts.isFunctionDeclaration(node);
-
-      if (sel.kind === 'function' && !isFuncDecl && !isArrow && !isFuncExpr) return null;
-      if (sel.kind === 'arrow-function' && !isArrow && !isFuncExpr) return null;
-
-      if (isFuncDecl && node.name?.text === sel.functionName) return node;
-
-      // 处理 const foo = () => {}
-      if ((isArrow || isFuncExpr) && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
-        if (node.parent.name.text === sel.functionName) {
-          // 向上提级到 VariableStatement，包含 const 关键字
-          let p = node.parent.parent; // VariableDeclarationList
-          if (p && ts.isVariableDeclarationList(p) && p.parent && ts.isVariableStatement(p.parent)) {
-            return p.parent;
-          }
-          return node.parent;
-        }
+  function collectCandidates(): { name: string; node: ts.Node }[] {
+    const list: { name: string; node: ts.Node }[] = [];
+    const visit = (node: ts.Node) => {
+      if (sel.kind === 'class' && ts.isClassDeclaration(node) && node.name) list.push({ name: node.name.text, node });
+      if (sel.kind === 'method' && ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) list.push({ name: node.name.text, node });
+      if ((sel.kind === 'function' || sel.kind === 'arrow-function') && (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node))) {
+        if (ts.isFunctionDeclaration(node) && node.name) list.push({ name: node.name.text, node });
+        if (ts.isArrowFunction(node) && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) list.push({ name: node.parent.name.text, node: node.parent.parent.parent });
       }
-      return null;
-    }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    return list;
+  }
 
-    // 4. property（支持 TECHS.铁矿机.cost 嵌套路径）
-    if (sel.kind === 'property' && sel.path && ts.isPropertyAssignment(node)) {
-      let current: ts.Node | undefined = node;
-      const parts = sel.path.split('.').reverse(); 
-      let partIdx = 0;
-      
-      while (current && partIdx < parts.length) {
-        if (ts.isPropertyAssignment(current) || ts.isVariableDeclaration(current) || ts.isPropertyDeclaration(current)) {
-          const name = current.name;
-          if (name && (ts.isIdentifier(name) || ts.isStringLiteral(name))) {
-            if (name.text === parts[partIdx]) {
-              partIdx++;
-            }
-          }
-        }
-        current = current.parent;
+  // 1. 如果开了 fuzzy，直接走向量引擎打分
+  if (sel.fuzzy) {
+    const query = sel.className || sel.methodName || sel.functionName || '';
+    const candidates = collectCandidates();
+    let bestScore = 0;
+    let bestNode: ts.Node | null = null;
+    for (const c of candidates) {
+      let score = getSimilarity(query, c.name);
+      // 如果名字互相包含（比如搜 update 命中 updateStatsPanel），给个高分
+      if (c.name.toLowerCase().includes(query.toLowerCase()) || query.toLowerCase().includes(c.name.toLowerCase())) {
+        score = Math.max(score, 0.8);
       }
-      if (partIdx === parts.length) {
-        // 如果目标是 PropertyAssignment，我们默认只替换它的值，这样用户传 '200' 就能直接生效
-        if (ts.isPropertyAssignment(node) && node.initializer) {
-          return node.initializer;
-        }
-        return node;
-      }
-      return null;
+      if (score > bestScore) { bestScore = score; bestNode = c.node; }
     }
-
-    // 5. variable / statement
-    if (sel.kind === 'variable' && ts.isVariableStatement(node)) {
-      const hasVar = node.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === sel.variableName);
-      if (hasVar) return node;
-    }
-    if (sel.kind === 'statement' && ts.isStatement(node) && node.parent === sf) return node;
-
+    // 因为用户显式开启了 fuzzy，只要得分大于 0 就返回最接近的
+    if (bestScore > 0) return { start: bestNode!.getStart(sf), end: bestNode!.getEnd() };
     return null;
   }
 
-  // 遍历所有节点
+  // 2. 以下是精确匹配逻辑（保留之前的边缘情况修复）
+  function isTarget(node: ts.Node): boolean {
+    if (sel.kind === 'class' && ts.isClassDeclaration(node) && node.name?.text === sel.className) return true;
+    if (sel.kind === 'method' && ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name) && node.name.text === sel.methodName) {
+      if (!sel.className) return true;
+      if (ts.isClassDeclaration(node.parent) && node.parent.name?.text === sel.className) return true;
+    }
+    if (sel.kind === 'function' || sel.kind === 'arrow-function') {
+      const isArrow = ts.isArrowFunction(node);
+      const isFuncDecl = ts.isFunctionDeclaration(node);
+      if (sel.kind === 'function' && !isFuncDecl && !isArrow) return false;
+      if (sel.kind === 'arrow-function' && !isArrow) return false;
+      if (isFuncDecl && node.name?.text === sel.functionName) return true;
+      if (isArrow && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name) && node.parent.name.text === sel.functionName) return true;
+    }
+    if (sel.kind === 'property' && sel.path && ts.isPropertyAssignment(node)) {
+      let current: ts.Node = node;
+      const parts = sel.path.split('.').reverse();
+      for (let i = 0; i < parts.length; i++) {
+        if (!current || !ts.isPropertyAssignment(current)) return false;
+        const name = current.name;
+        let key = '';
+        if (ts.isIdentifier(name) || ts.isStringLiteral(name)) key = name.text;
+        if (key !== parts[i]) return false;
+        current = current.parent;
+      }
+      return true;
+    }
+    if (sel.kind === 'variable' && ts.isVariableStatement(node)) {
+      if (node.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === sel.variableName)) return true;
+    }
+    if (sel.kind === 'statement' && ts.isStatement(node) && node.parent === sf) return true;
+    return false;
+  }
+
   const visit = (node: ts.Node): void => {
-    const target = getTargetNode(node);
-    if (target) matches.push(target);
+    if (isTarget(node)) matches.push(node);
     ts.forEachChild(node, visit);
   };
   visit(sf);
@@ -102,6 +91,15 @@ export function findNodeRange(
   if (matches.length < occurrence) return null;
   const found = matches[occurrence - 1];
 
-  // 💡 关键优化：getStart() 会保留注释（JSDoc），只从 token 本身开始
+  if (sel.kind === 'property' && ts.isPropertyAssignment(found) && found.initializer) {
+    return { start: found.initializer.getStart(sf), end: found.initializer.getEnd() };
+  }
+  if ((sel.kind === 'arrow-function' || sel.kind === 'function') && ts.isArrowFunction(found)) {
+     let p = found.parent;
+     if (ts.isVariableDeclaration(p) && p.parent && ts.isVariableDeclarationList(p.parent) && p.parent.parent && ts.isVariableStatement(p.parent.parent)) {
+         return { start: p.parent.parent.getStart(sf), end: p.parent.parent.getEnd() };
+     }
+  }
+
   return { start: found.getStart(sf), end: found.getEnd() };
 }

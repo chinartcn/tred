@@ -8,6 +8,8 @@ export interface AstSelector {
   path?: string;
   /** 如果有多个匹配，指定第几个（1-based），默认 1 */
   occurrence?: number;
+  /** v2.8.0: 开启向量模糊匹配 */
+  fuzzy?: boolean;
 }
 
 export interface SnippetSelector {
