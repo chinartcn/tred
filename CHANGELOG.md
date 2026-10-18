@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.5.1] - 2026-10-18
+### Fixed
+- 修复 `api.md` 未能同步 `tred patch --auto-heal` 和 `--html` 等新特性的问题。
+
 ## [3.5.0] - 2026-10-18
 ### Added (Smart Healing)
 - **`--auto-heal`**：当模糊匹配因上下文微小差异（如 `count: 1` vs `count: 2`）而失败时，自动纠正补丁上下文，重新校验并精准应用。

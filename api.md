@@ -39,19 +39,26 @@ tred ops <ops.json> [--dry-run]
 ```
 自带 Schema 校验，字段缺失时输出中文错误。
 
-### 4. `tred map` 与 `tred patch`
-
-**`tred map`**
+### 4. `tred patch` 原生差异合并
 ```bash
-tred map [--dir <path>]
+tred patch --file <path> <diff-file> [options]
 ```
-输出整个项目的 JSON 结构树（包含所有类/函数层级和代码行数），非常适合丢给 AI 分析架构。
+如果未指定 `<diff-file>`，默认从标准输入 (stdin) 读取 unified diff 格式。
 
-**`tred patch`**
-```bash
-tred patch --file <path> <diff-file>
-```
-如果未指定 `<diff-file>`，默认从标准输入 (stdin) 读取 unified diff 格式。tred 会在应用补丁后立刻执行语法校验。
+**匹配策略（优先级递减）：**
+1. 全文件精确匹配
+2. `@@ -X` 行号 ±50 行精确匹配
+3. 行号 ±50 行忽略首尾空白匹配
+4. `--fuzzy` 显式开启：Rare-Token × TF-IDF 加权模糊匹配
+
+**高级参数：**
+- `--fuzzy`：开启模糊匹配（默认关闭，安全第一）
+- `--fuzzy-threshold <n>`：TF-IDF 加权相似度阈值，默认 0.9
+- `--fuzzy-min-rare <n>`：最少稀有词要求，默认 2
+- **`--auto-heal`**：当相似度极高（>阈值-0.15）但因为有细微改动未命中时，自动将补丁上下文替换为真实文件内容并应用。
+- **`--html`**：当匹配失败时，生成 `tred-suggest.html` 可视化左右对比视图。
+
+> ⚠️ 模糊匹配默认关闭。hunk 里稀有标识符不足时直接拒绝，避免误伤相似结构。
 
 ### 5. `tred impact` 依赖分析
 ```bash
@@ -64,6 +71,8 @@ tred impact <targetName> [--dir <path>]
 tred split --file <path> --name <func1,func2> --to <new.ts>
 ```
 自动提取原文件中的顶层函数到新文件，并自动修复原文件的 import 和新文件的 export。
+
+### 7. 其他高频命令简表
 
 ### 7. 其他高频命令简表
 | 命令 | 说明 |
