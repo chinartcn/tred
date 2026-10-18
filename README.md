@@ -1,124 +1,91 @@
 # @rtcn/tred
 
-> 终极代码与文本重构引擎：**六大语言支持**，自带 **AST 定位**、**语法门禁**与**状态追踪**。
+> **全栈代码语义感知引擎**：基于 AST / Snippet / 向量 / WASM 极速定位，自带全语言语法门禁与外部状态追踪。
 
-## 为什么是 tred？
+## 🚀 核心痛点解决
 
-传统的正则替换遇到复杂嵌套就会崩溃，而重度依赖 AST 重构又面临陡峭的学习曲线。
-tred 提出了 **“锚点 + AST + 模糊状态”** 的三轨制解析方案：
+1. **正则替换太脆弱**：多一个空格、多一个换行就崩溃。
+2. **纯 AST 库太重**：`jscodeshift` 学习成本极高，不支持非代码文件（JSON/MD/HTML）。
+3. **AI 辅助改代码不可靠**：AI 生成的内容如果少个括号，直接导致整个项目白屏。
 
-1. **多语言解析**：原生支持 TS / JS / JSON / Markdown / HTML / CSS。
-2. **零妥协安全**：替换前必须通过原生编译器的**语法校验**（如 `tsc` 检查 JS，`postcss` 检查 CSS），写坏代码绝不允许落盘。
-3. **声明式流水线**：用 `tred ops` 组合任意操作，像流水线一样重构代码。
+**`tred` 的答案：** 多轨制精准定位 + 全语言编译门禁 + C/WASM 极致模糊匹配 + 事务安全。
 
-## 快速开始
+## 📦 安装
 
 ```bash
 npm i -D @rtcn/tred
 ```
+要求 Node.js >= 20。
 
-### 1. 万物皆可定位
+## ⚡ 快速开始
 
-无论你改什么文件，只要给它一个“选择器”：
-
+### 1. 像 Grep 一样扫描，但懂 AST
+传统 `grep` 只能告诉你文本在哪，`tred grep --ast` 会直接告诉你这段代码属于哪个函数或类：
 ```bash
-# 改 TS/JS：用 AST
-tred replace --file a.ts --selector '{"kind":"method","className":"Engine","methodName":"run"}' --content-file new.ts
-
-# 改 JSON：用对象路径
-tred replace --file package.json --selector '{"path":"version"}' --content '"2.0.0"'
-
-# 改 CSS：用 CSS 选择器
-tred replace --file style.css --selector '{"selector":".btn"}' --content-file btn.css
-
-# 改 Markdown：定位代码块或标题
-tred replace --file README.md --selector '{"codeLang":"js"}' --content-file demo.js
+tred grep "getResource" --ast
+# 输出: worker.ts:5: [in function: worker.onmessage] const data = getResource();
 ```
 
-### 2. 声明式编排 (`ops.json`)
+### 2. 模糊向量匹配 (AI 时代的神器)
+记不清具体的变量名？开启 `fuzzy: true`，底层由 C/WASM 和零分配算法驱动：
+```bash
+# 输入 "update status"，精准命中 const updateStatsPanel = () => {}
+tred replace --file main.ts --selector '{"kind":"arrow-function","functionName":"update status","fuzzy":true}' --content-file new.js
+```
 
-告别凌乱的脚本，用 JSON 定义整条重构流水线：
+### 3. 上下文级精准手术
+只在特定的代码块内部修改，绝不误伤同名的外部函数：
+```bash
+tred replace --file worker.ts \
+  --selector '{"kind":"function","functionName":"fetchData","context":"worker.onmessage"}' \
+  --content-file new-body.ts
+```
 
+## 🛡️ 六大语言全量支持
+
+| 语言 | 定位方式 | 语法门禁 |
+|---|---|---|
+| **TS / JS** | AST（Class / Method / Arrow / Property 嵌套） | 走 `tsc` 强校验 |
+| **JSON** | 嵌套路径（如 `$.scripts.test`） | 走 `JSON.parse` |
+| **CSS** | 选择器（如 `.btn`） | 走 `postcss` |
+| **HTML** | CSS Selector（如 `#title`） | 走 DOM 解析 |
+| **Markdown** | 标题层级 / 代码块语言 | 容错极高 |
+
+## 🔥 进阶杀手锏
+
+### 声明式流水线 (`tred ops`)
+把一连串重构写成 JSON 脚本，一步到位（自带 Schema 校验，字段错直接大白话报错）：
 ```json
 {
   "ops": [
     { "type": "annotate", "dir": "src", "apply": true },
-    {
-      "type": "replace",
-      "file": "src/engine.ts",
-      "anchor": "Engine#run",
-      "content": "run() { /* new logic */ }",
-      "assertions": { "hasAst": ["method:run"] }
-    },
-    { "type": "verify", "dir": "src", "strict": true }
+    { "type": "replace", "file": "src/a.ts", "anchor": "A#run", "content": "run() {}" },
+    { "type": "verify", "dir": "src" }
   ]
 }
 ```
 
-一键执行：`tred ops ops.json`
+### 失败局部 Diff 与缓存
+如果替换引发语法错误或断言失败，tred 会直接打印出“原代码 vs 新代码”对比，并缓存到 `.tred/last-failure.json`，让你一眼定位问题。
 
-### 3. 隐形状态追踪 (`.tred/state.json`)
-
-如果文件不允许写注释（如 JSON、MD、HTML），tred 会自动生成 `.tred/state.json` 记录**模糊行号与 AST 特征**。下次替换时，即使文件被外部工具篡改了行数，tred 也能通过 AST 特征瞬间找回目标。
-
-### 4. 极速安全闭环 (`tred commit`)
-
-```bash
-tred commit -m "feat: refactored ui"
-```
-自动执行 `verify` 拦截错误，并帮你完成 `git add` 和 `git commit`，坏代码连提交的机会都没有。
-
-## 🛠️ 进阶与救急操作
-
-### 1. 残骸文件抢救 (`--cut-to-end`)
-当文件末尾被意外截断或语法崩溃，AST 无法解析时，可以直接从某个注释切到文件末尾：
-
-```bash
-tred replace --file broken.ts --snippet-start "// ===== ENTRY =====" --cut-to-end --content-file new-tail.ts
-```
-
-### 2. 文件级暴力覆盖 (`kind: "file"`)
-如果连注释都没有，直接用行号或全文覆盖：
-
-```bash
-# 覆盖整个文件
-tred replace --file main.ts --selector '{"kind":"file","scope":"all"}' --content-file new-main.ts
-
-# 从第 50 行删到文件末尾
-tred replace --file main.ts --selector '{"kind":"file","scope":"tail","line":50}' --content ''
-```
-
-### 3. ops.json 的友好校验
-现在的 `tred ops` 支持 `contentFile` 和 `selector`，字段缺失时会输出大白话错误：
-
-```
-❌ op[0]: 必须提供 "content" 或 "contentFile"
-❌ op[0]: 缺少 "file" 字段
-```
-
-### 4. 人类友好的错误诊断
-当代码发生语法校验失败或断言失败时，tred 不仅会拒绝写入，还会直接打印出**局部原代码**与**你的新代码**的对比，方便你一眼定位问题。
-同时，所有报错上下文都会保存在 `.tred/last-failure.json` 中。
-
-### 6. 模糊向量匹配
-如果记不清确切的变量名或方法名，可以开启 `fuzzy: true`，tred 会基于 Dice 系数计算词根相似度，甚至支持拼写小错误：
-```bash
-# 输入 update status 也能精准命中 const updateStatsPanel = () => {}
-tred replace --file main.ts --selector '{"kind":"arrow-function","functionName":"update status","fuzzy":true}' --content-file new.js
-```
+### 隐形状态追踪 (`.tred/state.json`)
+对于无法写注释的文件（如 JSON、MD），tred 会自动记录模糊行号和 AST 特征。下次替换时，即使行数变了，也能精准找回。
 
 ## 📖 完整命令矩阵
-## 完整命令矩阵
 
 | 命令 | 描述 |
 |---|---|
-| `tred replace` | 单文件精准替换（支持锚点 / Snippet / 多语言 AST） |
-| `tred ops` | 声明式执行 JSON 脚本流水线 |
-| `tred commit` | 自动验证 + 安全提交 |
-| `tred verify` | 检查锚点健康度、孤儿、重复与多语言状态 |
-| `tred annotate` | 自动给 TS/JS 代码加锚点注释 |
-| `tred serve` | 生成 HTML 报告并在本地预览 |
+| `tred replace` | 单文件精准替换（锚点 / 多语言 AST / Snippet） |
+| `tred replace-many`| 批量事务替换（支持并发，失败回滚） |
+| `tred grep` | 全局扫描，支持 `--ast` 输出代码上下文 |
+| `tred ops` | 声明式执行 ops.json 流水线 |
+| `tred verify` | 检查锚点健康度与外部状态 |
+| `tred ast` | 查看任意文件的 AST 大纲 |
+| `tred annotate` | 自动给代码加锚点 |
+| `tred diff` | 极速锚点级 / 目录级对比 |
+| `tred strip` | 剥离源码内部锚点（用于 npm 发布前清理） |
+| `tred commit` | 自动验证 + 安全提交 Git |
 
-## License
+## 📄 License
 
 MIT © chinartcn
