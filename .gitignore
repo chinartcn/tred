@@ -44,3 +44,8 @@ scripts/
 # 根目录一次性工具脚本
 /*.mjs
 !bin/tred.mjs
+
+.tred/
+*.mjs
+!scripts/*.mjs
+!bin/*.mjs

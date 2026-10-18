@@ -37,7 +37,8 @@
     "demo:sarif": "bash examples/demo-sarif.sh",
     "demo:html": "bash examples/demo-html.sh",
     "serve": "node bin/tred.mjs serve",
-    "serve:demo": "node bin/tred.mjs serve --dir examples/_verify_demo"
+    "serve:demo": "node bin/tred.mjs serve --dir examples/_verify_demo",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "node-html-parser": "^9.0.4",
