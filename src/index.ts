@@ -61,7 +61,6 @@ interface ComputeOutcome {
   diff?: string;
 }
 
-// @TRED_START: COMPUTE_REPLACE | fp=354fbefa
 interface ComputeOutcome {
   nextSource: string | null;
   status: ReplaceStatus;
@@ -240,7 +239,6 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
   const diff = unifiedDiff(original, nextSource, 'a/' + file, 'b/' + file, original.length > 5000 ? 3 : 999999);
   return { nextSource, status, diff };
 }
-// @TRED_END: COMPUTE_REPLACE
 
 export async function replace(opts: ReplaceOptions): Promise<ReplaceResult> {
   if (!existsSync(opts.file)) {
@@ -262,7 +260,6 @@ export async function replace(opts: ReplaceOptions): Promise<ReplaceResult> {
   return result;
 }
 
-// @TRED_START: REPLACEMANY | fp=3608c023
 export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOptions): Promise<BatchResult> {
   const anyDryRun = ops.some(function (o) { return Boolean(o.dryRun); });
   const continueOnError = Boolean(options?.continueOnError);
@@ -445,7 +442,6 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
 
   return { status: 'committed', results: results, committedFiles: committed };
 }
-// @TRED_END: REPLACEMANY
 
 // v0.5: verify
 export { scanFileAnchors, verifyDir } from './verify.js';

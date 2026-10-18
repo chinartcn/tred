@@ -142,7 +142,6 @@ function resolveFingerprint(flags: Record<string, string | true>, anchor: string
   die('必须提供 --fp，或 --fp-source + --fp-version 自动生成指纹');
 }
 
-// @TRED_START: CLI_REPLACE | fp=1d2a4932
 async function cmdImpact(flags: Record<string, string | true | string[]>, positionals: string[]): Promise<number> {
   const target = positionals[1];
   if (!target) die('用法: tred impact <targetName> [--dir <path>]');
@@ -324,7 +323,6 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
   }
   return r.status === 'failed' ? 1 : 0;
 }
-// @TRED_END: CLI_REPLACE
 
 function renderTree(nodes: OutlineNode[], prefix: string): string[] {
   const out: string[] = [];
@@ -1076,7 +1074,6 @@ async function cmdServe(flags: Record<string, string | true>): Promise<number> {
 }
 
 
-// @TRED_START: CLI_MAIN | fp=64604533
 export async function cliMain(argv: string[]): Promise<void> {
   const parsed = parseArgs(argv);
   const flags = parsed.flags;
@@ -1114,7 +1111,6 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (!cmd) { process.stderr.write(HELP); process.exit(1); }
   die('未知命令: ' + cmd);
 }
-// @TRED_END: CLI_MAIN
 
 // 只有作为 CLI 入口（cli.ts / cli.js）时才自动执行；被 import 时静默
 const __argv1 = process.argv[1] ?? '';

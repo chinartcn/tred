@@ -95,7 +95,11 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
         text = comments + 'export function ' + name + typeParams + '(this: ' + targetClass + (params ? ', ' + params : '') + ')' + returnType + ' ' + bodyStr;
       } else if (ts.isPropertyDeclaration(node)) {
         const name = (node.name as ts.Identifier).text;
-        // 提取箭头函数体
+        let comments = '';
+        const fullText = original.slice(node.getFullStart(), node.getEnd()).trim();
+        const commentMatch = fullText.match(/^(\/\*[\s\S]*?\*\/|\/\/[^\n]*\n)+/);
+        if (commentMatch) comments = commentMatch[0];
+
         if (node.initializer && ts.isArrowFunction(node.initializer)) {
           const arrow = node.initializer;
           const params = arrow.parameters.map(p => p.getText(sf)).join(', ');
@@ -106,9 +110,9 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
             const dedented = dedent(inner).trim();
             bodyStr = '{\n  ' + dedented.replace(/\n/g, '\n  ') + '\n}';
           }
-          text = 'export const ' + name + ' = function(this: ' + targetClass + (params ? ', ' + params : '') + ')' + returnType + ' ' + bodyStr;
+          text = comments + 'export const ' + name + ' = function(this: ' + targetClass + (params ? ', ' + params : '') + ')' + returnType + ' ' + bodyStr + ';';
         } else {
-          text = 'export const ' + name + ' = ' + node.initializer?.getText(sf) + ';';
+          text = comments + 'export const ' + name + ' = ' + node.initializer?.getText(sf) + ';';
         }
       }
     } else {
