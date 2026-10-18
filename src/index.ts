@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { detectIndent, findAllAnchors, formatAnchor } from './anchor.js';
 import { findNodeRange } from './ast.js';
+import { findSnippetRange } from './snippet.js';
 import { atomicWrite } from './atomic.js';
-import { checkSyntax } from './safety.js';
+import { checkSyntax, checkAssertions } from './safety.js';
 import { unifiedDiff } from './diff.js';
 import type { BatchResult, ReplaceManyOptions, ReplaceOptions, ReplaceResult, ReplaceStatus } from './types.js';
 import { writeRollbackLog } from './rollback-log.js';
@@ -60,45 +61,67 @@ interface ComputeOutcome {
 
 async function computeReplace(original: string, opts: ReplaceOptions): Promise<ComputeOutcome> {
   const file = opts.file;
-  const anchor = opts.anchor;
   const content = opts.content;
-  const fingerprint = opts.fingerprint;
+  const fingerprint = opts.fingerprint || '';
 
-  const allAnchors = findAllAnchors(original, anchor);
-  if (allAnchors.length > 1) {
-    const where = allAnchors.map(function (b) { return b.startLine + 1; }).join(', ');
-    return {
-      nextSource: null,
-      status: 'failed',
-      message: '锚点名 "' + anchor + '" 出现 ' + allAnchors.length + ' 次（行 ' + where + '），请确保唯一',
-    };
+  let range: { start: number; end: number } | null = null;
+  let status: 'injected' | 'replaced' = 'replaced';
+  let indent = '';
+
+  if (opts.anchor) {
+    const allAnchors = findAllAnchors(original, opts.anchor, opts.fuzzy);
+    if (allAnchors.length > 1) {
+      return { nextSource: null, status: 'failed', message: '锚点名 "' + opts.anchor + '" 出现多次' };
+    }
+    const block = allAnchors[0];
+    if (block) {
+      if (block.fp === fingerprint) return { nextSource: null, status: 'skipped', message: '指纹一致，跳过' };
+      range = { start: block.startLineStart, end: block.endLineEnd };
+      indent = detectIndent(original, block.startLineStart);
+    } else {
+      if (!opts.autoInjectAnchor || !opts.astSelector) {
+        return { nextSource: null, status: 'failed', message: '找不到锚点且未配置 autoInjectAnchor' };
+      }
+      const astRange = findNodeRange(file, original, opts.astSelector);
+      if (!astRange) return { nextSource: null, status: 'failed', message: 'AST 找不到节点' };
+      range = astRange;
+      indent = detectIndent(original, range!.start);
+      status = 'injected';
+    }
+  } else if (opts.snippetSelector) {
+    const snipRange = findSnippetRange(original, opts.snippetSelector);
+    if (!snipRange) return { nextSource: null, status: 'failed', message: '找不到匹配的代码片段' };
+    range = snipRange;
+    indent = detectIndent(original, range!.start);
+  } else if (opts.astSelector) {
+    const astRange = findNodeRange(file, original, opts.astSelector);
+    if (!astRange) return { nextSource: null, status: 'failed', message: 'AST 找不到节点' };
+    range = astRange;
+    indent = detectIndent(original, range!.start);
+  } else {
+    return { nextSource: null, status: 'failed', message: '缺少定位条件 (anchor / astSelector / snippetSelector)' };
   }
 
-  const block = allAnchors[0];
-  let nextSource: string;
-  let status: 'injected' | 'replaced';
+  // 💥 强制收窄类型，解决 TS 严格模式报错
+  const finalRange = range as { start: number; end: number };
 
-  if (!block) {
-    if (!opts.autoInjectAnchor || !opts.astSelector) {
-      return { nextSource: null, status: 'failed', message: '找不到锚点；如需首次注入，请提供 autoInjectAnchor: true 与 astSelector' };
-    }
-    const range = findNodeRange(file, original, opts.astSelector);
-    if (!range) {
-      return { nextSource: null, status: 'failed', message: 'AST 中找不到节点: ' + JSON.stringify(opts.astSelector) };
-    }
-    const indent = detectIndent(original, range.start);
-    const newBlock = buildBlock(anchor, fingerprint, content, indent);
-    const lineStart = range.start - indent.length;
-    nextSource = original.slice(0, lineStart) + newBlock + original.slice(range.end);
-    status = 'injected';
+  const normalized = normalizeContent(content).replace(/\n+$/, '');
+  if (opts.assertions) {
+    const assertErrors = checkAssertions(normalized, opts.assertions);
+    if (assertErrors.length > 0) return { nextSource: null, status: 'failed', message: '智能断言失败', syntaxErrors: assertErrors };
+  }
+
+  let nextSource = '';
+  if (status === 'injected') {
+    const newBlock = buildBlock(opts.anchor!, fingerprint, content, indent);
+    const lineStart = finalRange.start - indent.length;
+    nextSource = original.slice(0, lineStart) + newBlock + original.slice(finalRange.end);
+  } else if (opts.anchor) {
+    const newBlock = buildBlock(opts.anchor, fingerprint, content, indent);
+    nextSource = original.slice(0, finalRange.start) + newBlock + original.slice(finalRange.end);
   } else {
-    if (block.fp === fingerprint) {
-      return { nextSource: null, status: 'skipped', message: '指纹一致 (' + fingerprint + ')，跳过' };
-    }
-    const indent = detectIndent(original, block.startLineStart);
-    const newBlock = buildBlock(anchor, fingerprint, content, indent);
-    nextSource = original.slice(0, block.startLineStart) + newBlock + original.slice(block.endLineEnd);
-    status = 'replaced';
+    const body = indentLines(normalized, indent);
+    nextSource = original.slice(0, finalRange.start) + body + original.slice(finalRange.end);
   }
 
   if (opts.format) {
@@ -111,11 +134,11 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
 
   const syntaxErrors = checkSyntax(file, nextSource);
   if (syntaxErrors.length > 0) {
-    return { nextSource: null, status: 'failed', message: '语法校验失败，拒绝写入', syntaxErrors: syntaxErrors };
+    return { nextSource: null, status: 'failed', message: '语法校验失败，拒绝写入', syntaxErrors };
   }
 
   const diff = unifiedDiff(original, nextSource, 'a/' + file, 'b/' + file);
-  return { nextSource: nextSource, status: status, diff: diff };
+  return { nextSource, status, diff };
 }
 
 export async function replace(opts: ReplaceOptions): Promise<ReplaceResult> {
@@ -411,3 +434,5 @@ export type { HtmlOptions } from './render-html.js';
 
 export { serveHtml, tryOpenBrowser } from './serve.js';
 export type { ServeOptions, ServeHandle } from './serve.js';
+
+export { runOps } from './ops.js';

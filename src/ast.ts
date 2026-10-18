@@ -17,39 +17,29 @@ export function findNodeRange(
   sel: AstSelector,
 ): NodeRange | null {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
-  let found: ts.Node | null = null;
+  const matches: ts.Node[] = [];
+  const occurrence = sel.occurrence ?? 1;
 
   const visit = (node: ts.Node): void => {
-    if (found) return;
-
-    if (sel.kind === 'class' && ts.isClassDeclaration(node)) {
-      if (node.name?.text === sel.className) {
-        found = node;
-        return;
-      }
-    } else if (sel.kind === 'function' && ts.isFunctionDeclaration(node)) {
-      if (node.name?.text === sel.functionName) {
-        found = node;
-        return;
-      }
-    } else if (
-      sel.kind === 'method' &&
-      ts.isMethodDeclaration(node) &&
-      node.name &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === sel.methodName &&
-      ts.isClassDeclaration(node.parent) &&
-      node.parent.name?.text === sel.className
-    ) {
-      found = node;
-      return;
+    if (sel.kind === 'class' && ts.isClassDeclaration(node) && node.name?.text === sel.className) {
+      matches.push(node);
+    } else if (sel.kind === 'function' && ts.isFunctionDeclaration(node) && node.name?.text === sel.functionName) {
+      matches.push(node);
+    } else if (sel.kind === 'method' && ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name) && node.name.text === sel.methodName && ts.isClassDeclaration(node.parent) && node.parent.name?.text === sel.className) {
+      matches.push(node);
+    } else if (sel.kind === 'variable' && ts.isVariableStatement(node)) {
+      const hasVar = node.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === sel.variableName);
+      if (hasVar) matches.push(node);
+    } else if (sel.kind === 'statement') {
+      if (ts.isStatement(node) && node.parent === sf) matches.push(node);
     }
 
     ts.forEachChild(node, visit);
   };
 
   visit(sf);
-  if (!found) return null;
-  const node: ts.Node = found;
-  return { start: node.getStart(sf), end: node.getEnd() };
+  if (matches.length === 0 || matches.length < occurrence) return null;
+  
+  const found = matches[occurrence - 1];
+  return { start: found.getStart(sf), end: found.getEnd() };
 }

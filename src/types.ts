@@ -1,19 +1,51 @@
 export interface AstSelector {
-  kind: 'class' | 'function' | 'method';
+  kind: 'class' | 'function' | 'method' | 'statement' | 'variable';
   className?: string;
   functionName?: string;
   methodName?: string;
+  variableName?: string;
+  /** 如果有多个匹配，指定第几个（1-based），默认 1 */
+  occurrence?: number;
+}
+
+export interface SnippetSelector {
+  /** 按行范围 */
+  startLine?: number;
+  endLine?: number;
+  /** 按文本片段（包含该片段的行开始/结束） */
+  startSnippet?: string;
+  endSnippet?: string;
+  /** 有多处匹配时，取第几个，默认 1 */
+  occurrence?: number;
 }
 
 export type Formatter = (source: string, file: string) => string | Promise<string>;
 
+export interface ReplaceAssertions {
+  /** 新内容必须包含这些文本 */
+  include?: string[];
+  /** 新内容必须不包含这些文本 */
+  exclude?: string[];
+  /** 新内容必须匹配这些正则（字符串形式） */
+  regex?: string[];
+  /** 替换后代码必须包含特定的 AST 节点，如 "method:run" */
+  hasAst?: string[];
+  /** 替换后代码不能包含特定的 AST 节点，如 "variable:oldVar" */
+  noAst?: string[];
+}
+
 export interface ReplaceOptions {
+  /** 智能断言：写盘前对即将替换的代码进行特征校验 */
+  assertions?: ReplaceAssertions;
+  /** 模糊匹配：忽略锚点名大小写，允许冒号前后无空格 */
+  fuzzy?: boolean;
   file: string;
   anchor: string;
   content: string;
   fingerprint: string;
   autoInjectAnchor?: boolean;
   astSelector?: AstSelector;
+  snippetSelector?: SnippetSelector;
   dryRun?: boolean;
   format?: Formatter;
 }

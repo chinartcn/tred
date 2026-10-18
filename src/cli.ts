@@ -1,4 +1,6 @@
+import type { SnippetSelector } from './types.js';
 import { existsSync, readFileSync } from 'node:fs';
+import { runOps } from './ops.js';
 import { annotateDir, annotateFile, buildOutline, diffAnchor, diffDir, fixDir, makeFingerprint, replace, replaceMany, verifyDir, renderVerifyMarkdown, renderFixMarkdown, diffDirGit, renderDiffDirMarkdown, renderAnnotateDirMarkdown, doctor, buildBaseline, loadBaseline, saveBaseline, filterIssuesByBaseline, init, renderGithubAnnotations, renderFixGithubAnnotations, watchDir, getDiffLines, renderSarif, renderHtml, serveHtml, tryOpenBrowser } from './index.js';
 import type { AnnotateDirResult, AnnotateResult, AstSelector, DiffDirResult, FixReport, Formatter, OutlineNode, ReplaceOptions, VerifyReport, DoctorReport, InitResult, BaselineFile } from './types.js';
 
@@ -163,34 +165,78 @@ function resolveFingerprint(flags: Record<string, string | true>, anchor: string
   die('必须提供 --fp，或 --fp-source + --fp-version 自动生成指纹');
 }
 
-async function cmdReplace(flags: Record<string, string | true>): Promise<number> {
+async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): Promise<number> {
+  // 为了兼容老函数，把 array 降维成最后一个 string
+  const flags: Record<string, string | true> = {};
+  for (const k of Object.keys(flagsRaw)) {
+    const v = flagsRaw[k];
+    flags[k] = Array.isArray(v) ? v[v.length - 1] : v;
+  }
+
   const file = requireStr(flags, 'file');
-  const anchor = requireStr(flags, 'anchor');
+  const anchor = typeof flags.anchor === 'string' ? flags.anchor : undefined;
   const content = readContent(flags);
-  const fingerprint = resolveFingerprint(flags, anchor);
+
+  let fingerprint = '';
+  if (anchor) {
+    fingerprint = resolveFingerprint(flags, anchor);
+  }
 
   let astSelector: AstSelector | undefined;
-  if (flags.selector !== undefined) {
-    try { astSelector = JSON.parse(requireStr(flags, 'selector')) as AstSelector; }
-    catch { die('--selector 必须是合法 JSON'); }
+  if (typeof flags.selector === 'string') {
+    try { astSelector = JSON.parse(flags.selector) as AstSelector; } catch { die('--selector 必须是合法 JSON'); }
   }
-  if (flags['auto-inject'] && !astSelector) die('--auto-inject 需要同时提供 --selector');
+  
+  const toArr = (v: any) => (Array.isArray(v) ? v : v ? [v] : undefined);
+  const occ = typeof flags.occurrence === 'string' ? parseInt(flags.occurrence, 10) : undefined;
+  if (astSelector && occ) astSelector.occurrence = occ;
 
-  const r = await replace({
-    file: file, anchor: anchor, content: content, fingerprint: fingerprint,
+  const snippetSelector: SnippetSelector = {};
+  if (flags['snippet-start-line']) snippetSelector.startLine = parseInt(flags['snippet-start-line'] as string, 10);
+  if (flags['snippet-end-line']) snippetSelector.endLine = parseInt(flags['snippet-end-line'] as string, 10);
+  if (flags['snippet-start']) snippetSelector.startSnippet = flags['snippet-start'] as string;
+  if (flags['snippet-end']) snippetSelector.endSnippet = flags['snippet-end'] as string;
+  if (occ) snippetSelector.occurrence = occ;
+
+  const hasSnippet = Object.keys(snippetSelector).length > 0;
+
+  if (!anchor && !astSelector && !hasSnippet) {
+    die('必须提供 --anchor 或 --selector 或 --snippet-* 之一');
+  }
+
+  if (flags['auto-inject'] && (!anchor || !astSelector)) {
+    die('--auto-inject 需要同时提供 --anchor 和 --selector');
+  }
+
+  const opts: ReplaceOptions = {
+    file,
+    anchor: anchor || '',
+    content,
+    fingerprint,
     dryRun: Boolean(flags['dry-run']),
     autoInjectAnchor: Boolean(flags['auto-inject']),
-    astSelector: astSelector,
+    fuzzy: Boolean(flags.fuzzy),
+    astSelector,
+    snippetSelector: hasSnippet ? snippetSelector : undefined,
+    assertions: {
+      include: toArr(flagsRaw['assert-include']),
+      exclude: toArr(flagsRaw['assert-exclude']),
+      regex: toArr(flagsRaw['assert-regex']),
+      hasAst: toArr(flagsRaw['assert-has-ast']),
+      noAst: toArr(flagsRaw['assert-no-ast']),
+    },
     format: await buildFormatter(flags),
-  });
+  };
+
+  const r = await replace(opts);
 
   if (flags.json) {
     process.stdout.write(JSON.stringify(r, null, 2) + '\n');
   } else {
-    process.stdout.write('[tred] ' + r.status.toUpperCase() + ' ' + r.anchor + ' @ ' + r.file + '\n');
+    process.stdout.write('[tred] ' + r.status.toUpperCase() + ' ' + r.file + '\n');
     if (r.message) process.stdout.write('        ' + r.message + '\n');
     if (r.syntaxErrors && r.syntaxErrors.length) {
-      process.stdout.write('        语法错误:\n');
+      process.stdout.write('        错误:\n');
       for (const e of r.syntaxErrors) process.stdout.write('          ' + e + '\n');
     }
     if (r.diff) process.stdout.write('\n' + r.diff);
@@ -948,6 +994,7 @@ async function cmdServe(flags: Record<string, string | true>): Promise<number> {
 }
 
 
+// @TRED_START: CLI_MAIN | fp=64604533
 export async function cliMain(argv: string[]): Promise<void> {
   const parsed = parseArgs(argv);
   const flags = parsed.flags;
@@ -967,10 +1014,18 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (cmd === 'init')         { process.exit(await cmdInit(flags)); }
   if (cmd === 'watch')        { process.exit(await cmdWatch(flags)); }
   if (cmd === 'serve')        { process.exit(await cmdServe(flags)); }
-  if (cmd === 'annotate')     { process.exit(await cmdAnnotate(flags)); }
+  
+  // v1.3.0: ops 声明式执行
+  if (cmd === 'ops' || (cmd && cmd.endsWith('.json'))) {
+    const opsFile = cmd.endsWith('.json') ? cmd : positionals[1];
+    if (!opsFile) die('用法: tred ops <ops.json>');
+    process.exit(await runOps(opsFile, flags));
+  }
+  
   if (!cmd) { process.stderr.write(HELP); process.exit(1); }
   die('未知命令: ' + cmd);
 }
+// @TRED_END: CLI_MAIN
 
 // 只有作为 CLI 入口（cli.ts / cli.js）时才自动执行；被 import 时静默
 const __argv1 = process.argv[1] ?? '';

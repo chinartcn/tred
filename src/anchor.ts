@@ -8,17 +8,25 @@ export interface AnchorBlock {
 }
 
 function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&');
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function startPattern(name: string): RegExp {
-  return new RegExp(
-    '^\\s*//\\s*@TRED_START:\\s*' + escapeRegex(name) + '(?:\\s*\\|\\s*fp=([a-f0-9]{8}))?\\s*$',
-  );
+function startPattern(name: string, fuzzy?: boolean): RegExp {
+  const flags = fuzzy ? 'i' : '';
+  const pat =
+    '^\\s*//\\s*@TRED_START\\s*:\\s*' +
+    escapeRegex(name) +
+    '(?:\\s*\\|\\s*fp=([a-f0-9]{8}))?\\s*$';
+  return new RegExp(pat, flags);
 }
 
-function endPattern(name: string): RegExp {
-  return new RegExp('^\\s*//\\s*@TRED_END:\\s*' + escapeRegex(name) + '\\s*$');
+function endPattern(name: string, fuzzy?: boolean): RegExp {
+  const flags = fuzzy ? 'i' : '';
+  const pat =
+    '^\\s*//\\s*@TRED_END\\s*:\\s*' +
+    escapeRegex(name) +
+    '\\s*$';
+  return new RegExp(pat, flags);
 }
 
 function lineStarts(lines: string[]): number[] {
@@ -35,11 +43,11 @@ function lineStarts(lines: string[]): number[] {
  * #3 扫描所有完整的 START/END 配对（用于重复检测）。
  * 未闭合的 START 视为不完整块，跳过。
  */
-export function findAllAnchors(source: string, name: string): AnchorBlock[] {
+export function findAllAnchors(source: string, name: string, fuzzy?: boolean): AnchorBlock[] {
   const lines = source.split('\n');
   const starts = lineStarts(lines);
-  const startRe = startPattern(name);
-  const endRe = endPattern(name);
+  const startRe = startPattern(name, fuzzy);
+  const endRe = endPattern(name, fuzzy);
   const blocks: AnchorBlock[] = [];
 
   let i = 0;
@@ -73,8 +81,8 @@ export function findAllAnchors(source: string, name: string): AnchorBlock[] {
 }
 
 /** 兼容 v0.1：返回第一个块 */
-export function findAnchor(source: string, name: string): AnchorBlock | null {
-  const all = findAllAnchors(source, name);
+export function findAnchor(source: string, name: string, fuzzy?: boolean): AnchorBlock | null {
+  const all = findAllAnchors(source, name, fuzzy);
   return all[0] ?? null;
 }
 
