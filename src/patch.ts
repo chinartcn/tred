@@ -1,50 +1,75 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { checkSyntax } from './safety.js';
 
-/**
- * 极简的 unified diff 应用器。
- * 解析 -行 和 +行，然后在原文件中进行替换。
- * 如果应用后语法错误，则拒绝写入。
- */
 export function applyPatch(filePath: string, patchText: string): { ok: boolean; message?: string } {
   const original = readFileSync(filePath, 'utf-8');
   const lines = original.split('\n');
   const patchLines = patchText.split('\n');
 
-  // 1. 提取出要删除的行和要添加的行
-  const minusLines: string[] = [];
-  const plusLines: string[] = [];
+  const hunks: { oldBlock: string[], newBlock: string[] }[] = [];
+  let currentHunk: { oldBlock: string[], newBlock: string[] } | null = null;
 
+  // 1. 解析 Patch 的 Hunk 块（包含上下文行）
   for (const l of patchLines) {
-    if (l.startsWith('-') && !l.startsWith('---')) minusLines.push(l.slice(1));
-    else if (l.startsWith('+') && !l.startsWith('+++')) plusLines.push(l.slice(1));
-  }
-
-  if (minusLines.length === 0 && plusLines.length === 0) {
-    return { ok: false, message: 'Patch 格式错误：未找到 + 或 - 行' };
-  }
-
-  // 2. 在原文件中寻找要删除的块
-  let foundIdx = -1;
-  for (let i = 0; i <= lines.length - minusLines.length; i++) {
-    let match = true;
-    for (let j = 0; j < minusLines.length; j++) {
-      if (lines[i + j] !== minusLines[j]) {
-        match = false; break;
-      }
+    if (l.startsWith('---') || l.startsWith('+++') || l.startsWith('diff')) continue;
+    
+    if (l.startsWith('@@ ')) {
+      if (currentHunk) hunks.push(currentHunk);
+      currentHunk = { oldBlock: [], newBlock: [] };
+      continue;
     }
-    if (match) { foundIdx = i; break; }
+
+    if (!currentHunk) continue;
+
+    if (l.startsWith(' ')) {
+      const text = l.slice(1);
+      currentHunk.oldBlock.push(text);
+      currentHunk.newBlock.push(text);
+    } else if (l.startsWith('-')) {
+      const text = l.slice(1);
+      currentHunk.oldBlock.push(text);
+    } else if (l.startsWith('+')) {
+      const text = l.slice(1);
+      currentHunk.newBlock.push(text);
+    }
+  }
+  if (currentHunk) hunks.push(currentHunk);
+
+  if (hunks.length === 0) {
+    return { ok: false, message: '未找到有效的 Hunk (@@ ... @@)' };
   }
 
-  if (foundIdx === -1) {
-    return { ok: false, message: '在原文件中未找到待删除的代码块，Patch 应用失败' };
+  // 2. 逐个应用 Hunk
+  let currentLines = [...lines];
+  for (const hunk of hunks) {
+    const { oldBlock, newBlock } = hunk;
+    if (oldBlock.length === 0) {
+      return { ok: false, message: 'Hunk 缺少上下文，无法定位' };
+    }
+
+    let foundIdx = -1;
+    // 寻找上下文匹配的位置
+    for (let i = 0; i <= currentLines.length - oldBlock.length; i++) {
+      let match = true;
+      for (let j = 0; j < oldBlock.length; j++) {
+        if (currentLines[i + j] !== oldBlock[j]) {
+          match = false; break;
+        }
+      }
+      if (match) { foundIdx = i; break; }
+    }
+
+    if (foundIdx === -1) {
+      return { ok: false, message: '在原文件中未找到匹配的上下文块，Patch 应用失败' };
+    }
+
+    // 替换为新块
+    currentLines.splice(foundIdx, oldBlock.length, ...newBlock);
   }
 
-  // 3. 替换为新行
-  lines.splice(foundIdx, minusLines.length, ...plusLines);
-  const newText = lines.join('\n');
+  const newText = currentLines.join('\n');
 
-  // 4. 语法门禁
+  // 3. 语法门禁
   if (/\.[jt]sx?$/.test(filePath)) {
     const errors = checkSyntax(filePath, newText);
     if (errors.length > 0) {
