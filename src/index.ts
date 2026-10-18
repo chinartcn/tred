@@ -237,7 +237,7 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
     return { nextSource: null, status: 'failed', message: '语法校验失败，拒绝写入', syntaxErrors, failureContext };
   }
 
-  const diff = unifiedDiff(original, nextSource, 'a/' + file, 'b/' + file);
+  const diff = unifiedDiff(original, nextSource, 'a/' + file, 'b/' + file, original.length > 5000 ? 3 : 999999);
   return { nextSource, status, diff };
 }
 // @TRED_END: COMPUTE_REPLACE

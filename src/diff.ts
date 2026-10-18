@@ -1,20 +1,18 @@
 interface Op { type: ' ' | '-' | '+'; line: string; }
 
-const LCS_CELL_LIMIT = 4_000_000; // 2000x2000 上限，超过就退化
+const LCS_CELL_LIMIT = 4_000_000;
 
 function lcsDiff(a: string[], b: string[]): Op[] {
   const m = a.length;
   const n = b.length;
 
-  // 超大 mid 时退化：直接全删全加
   if (m * n > LCS_CELL_LIMIT) {
     const ops: Op[] = [];
-    for (const line of a) ops.push({ type: '-', line: line });
-    for (const line of b) ops.push({ type: '+', line: line });
+    for (const line of a) ops.push({ type: '-', line });
+    for (const line of b) ops.push({ type: '+', line });
     return ops;
   }
 
-  // 标准 LCS DP
   const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
@@ -44,7 +42,13 @@ function lcsDiff(a: string[], b: string[]): Op[] {
   return ops;
 }
 
-export function unifiedDiff(oldText: string, newText: string, oldName: string, newName: string): string {
+export function unifiedDiff(
+  oldText: string,
+  newText: string,
+  oldName: string,
+  newName: string,
+  contextLines: number = 3,
+): string {
   if (oldText === newText) {
     return '--- ' + oldName + '\n+++ ' + newName + '\n';
   }
@@ -53,29 +57,37 @@ export function unifiedDiff(oldText: string, newText: string, oldName: string, n
   const newLines = newText.split('\n');
   const minLen = Math.min(oldLines.length, newLines.length);
 
-  // 1. 剥离公共前缀
   let prefix = 0;
   while (prefix < minLen && oldLines[prefix] === newLines[prefix]) prefix++;
 
-  // 2. 剥离公共后缀
   let suffix = 0;
   while (
     suffix < minLen - prefix &&
     oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]
   ) suffix++;
 
-  // 3. 仅对中间变化区域做 LCS
   const oldMid = oldLines.slice(prefix, oldLines.length - suffix);
   const newMid = newLines.slice(prefix, newLines.length - suffix);
   const midOps = lcsDiff(oldMid, newMid);
 
-  // 4. 组装最终结果（前缀省略，直接显示变化 + 后缀省略）
   const allOps: Op[] = [];
-  for (const line of oldLines.slice(0, prefix)) allOps.push({ type: ' ', line: line });
+  for (const line of oldLines.slice(0, prefix)) allOps.push({ type: ' ', line });
   for (const op of midOps) allOps.push(op);
-  for (const line of oldLines.slice(oldLines.length - suffix)) allOps.push({ type: ' ', line: line });
+  for (const line of oldLines.slice(oldLines.length - suffix)) allOps.push({ type: ' ', line });
+
+  // 截取局部上下文
+  let startIdx = 0;
+  let endIdx = allOps.length - 1;
+  for (let k = 0; k < allOps.length; k++) {
+    if (allOps[k].type !== ' ') { startIdx = Math.max(0, k - contextLines); break; }
+  }
+  for (let k = allOps.length - 1; k >= 0; k--) {
+    if (allOps[k].type !== ' ') { endIdx = Math.min(allOps.length - 1, k + contextLines); break; }
+  }
+  
+  const slicedOps = allOps.slice(startIdx, endIdx + 1);
 
   const header = '--- ' + oldName + '\n+++ ' + newName + '\n';
-  const body = allOps.map((o) => o.type + o.line).join('\n');
+  const body = slicedOps.map((o) => o.type + o.line).join('\n');
   return body ? header + body + '\n' : header;
 }
