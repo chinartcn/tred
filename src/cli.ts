@@ -8,6 +8,7 @@ import type { AnnotateDirResult, AnnotateResult, AstSelector, DiffDirResult, Fix
 import { fileURLToPath } from 'node:url';
 import { dirname as _dirname, resolve as _resolve, join } from 'node:path';
 import { stripDir } from './strip.js';
+import { grepDir } from './grep.js';
 
 const __pkgDir = _dirname(fileURLToPath(import.meta.url));
 const VERSION: string = (JSON.parse(
@@ -168,6 +169,15 @@ function resolveFingerprint(flags: Record<string, string | true>, anchor: string
 }
 
 // @TRED_START: CLI_REPLACE | fp=1d2a4932
+async function cmdGrep(flags: Record<string, string | true | string[]>, positionals: string[]): Promise<number> {
+  const pattern = positionals[1];
+  if (!pattern) die('用法: tred grep <pattern> [--dir <path>] [--ast]');
+  const dir = typeof flags.dir === 'string' ? flags.dir : '.';
+  const useAst = Boolean(flags.ast);
+  grepDir(dir, pattern, useAst);
+  return 0;
+}
+
 async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): Promise<number> {
   const flags: Record<string, string | true> = {};
   for (const k of Object.keys(flagsRaw)) {
@@ -1024,6 +1034,7 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (flags.version || positionals[0] === 'version') { process.stdout.write('tred v' + VERSION + '\n'); return; }
 
   const cmd = positionals[0];
+  if (cmd === 'grep')         { process.exit(await cmdGrep(flags, positionals)); }
   if (cmd === 'replace')      { process.exit(await cmdReplace(flags)); }
   if (cmd === 'replace-many') { process.exit(await cmdReplaceMany(flags)); }
   if (cmd === 'ast')          { process.exit(await cmdAst(flags)); }

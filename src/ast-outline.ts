@@ -62,6 +62,22 @@ export function buildOutline(fileName: string, source: string): OutlineNode[] {
         end: p.end,
         selector: { kind: 'function', functionName: stmt.name.text },
       });
+    } else if (ts.isExpressionStatement(stmt) && ts.isBinaryExpression(stmt.expression) && stmt.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = stmt.expression.left;
+      const right = stmt.expression.right;
+      if ((ts.isFunctionExpression(right) || ts.isArrowFunction(right)) && (ts.isIdentifier(left) || ts.isPropertyAccessExpression(left))) {
+        const p = pos(sf, stmt);
+        const name = left.getText(sf);
+        roots.push({
+          kind: 'function',
+          name: name,
+          line: p.line,
+          column: p.column,
+          start: p.start,
+          end: p.end,
+          selector: { kind: 'function', functionName: name },
+        });
+      }
     }
   }
   return roots;

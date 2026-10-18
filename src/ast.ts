@@ -13,14 +13,34 @@ export function findNodeRange(
   let matches: ts.Node[] = [];
   const occurrence = sel.occurrence ?? 1;
 
+  // 检查节点是否在指定的上下文中
+  function isInContext(node: ts.Node, contextStr?: string): boolean {
+    if (!contextStr) return true;
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      // 如果父节点是一个 CallExpression，提取它的调用表达式文本（比如 worker.onmessage）
+      if (ts.isCallExpression(current) || ts.isPropertyAccessExpression(current)) {
+        if (current.getText(sf).includes(contextStr)) return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
   function collectCandidates(): { name: string; node: ts.Node }[] {
     const list: { name: string; node: ts.Node }[] = [];
     const visit = (node: ts.Node) => {
-      if (sel.kind === 'class' && ts.isClassDeclaration(node) && node.name) list.push({ name: node.name.text, node });
-      if (sel.kind === 'method' && ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) list.push({ name: node.name.text, node });
-      if ((sel.kind === 'function' || sel.kind === 'arrow-function') && (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node))) {
-        if (ts.isFunctionDeclaration(node) && node.name) list.push({ name: node.name.text, node });
-        if (ts.isArrowFunction(node) && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) list.push({ name: node.parent.name.text, node: node.parent.parent.parent });
+      let name = '';
+      let isTargetKind = false;
+      if (sel.kind === 'class' && ts.isClassDeclaration(node) && node.name) { name = node.name.text; isTargetKind = true; }
+      if (sel.kind === 'method' && ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) { name = node.name.text; isTargetKind = true; }
+      if (sel.kind === 'function' || sel.kind === 'arrow-function') {
+        if (ts.isFunctionDeclaration(node) && node.name) { name = node.name.text; isTargetKind = true; }
+        if (ts.isArrowFunction(node) && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) { name = node.parent.name.text; isTargetKind = true; }
+      }
+      
+      if (isTargetKind && isInContext(node, sel.context)) {
+        list.push({ name, node });
       }
       ts.forEachChild(node, visit);
     };
@@ -28,7 +48,6 @@ export function findNodeRange(
     return list;
   }
 
-  // 1. 如果开了 fuzzy，直接走向量引擎打分
   if (sel.fuzzy) {
     const query = sel.className || sel.methodName || sel.functionName || '';
     const candidates = collectCandidates();
@@ -36,50 +55,53 @@ export function findNodeRange(
     let bestNode: ts.Node | null = null;
     for (const c of candidates) {
       let score = getSimilarity(query, c.name);
-      // 如果名字互相包含（比如搜 update 命中 updateStatsPanel），给个高分
       if (c.name.toLowerCase().includes(query.toLowerCase()) || query.toLowerCase().includes(c.name.toLowerCase())) {
-        score = Math.max(score, 0.8);
+        score = Math.max(score, 0.9);
       }
       if (score > bestScore) { bestScore = score; bestNode = c.node; }
     }
-    // 因为用户显式开启了 fuzzy，只要得分大于 0 就返回最接近的
-    if (bestScore > 0) return { start: bestNode!.getStart(sf), end: bestNode!.getEnd() };
+    if (bestScore > 0) {
+       if (ts.isArrowFunction(bestNode!) && ts.isVariableDeclaration(bestNode!.parent) && bestNode!.parent.parent && ts.isVariableDeclarationList(bestNode!.parent.parent) && bestNode!.parent.parent.parent && ts.isVariableStatement(bestNode!.parent.parent.parent)) {
+           return { start: bestNode!.parent.parent.parent.getStart(sf), end: bestNode!.parent.parent.parent.getEnd() };
+       }
+       return { start: bestNode!.getStart(sf), end: bestNode!.getEnd() };
+    }
     return null;
   }
 
-  // 2. 以下是精确匹配逻辑（保留之前的边缘情况修复）
   function isTarget(node: ts.Node): boolean {
-    if (sel.kind === 'class' && ts.isClassDeclaration(node) && node.name?.text === sel.className) return true;
+    let match = false;
+    if (sel.kind === 'class' && ts.isClassDeclaration(node) && node.name?.text === sel.className) match = true;
     if (sel.kind === 'method' && ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name) && node.name.text === sel.methodName) {
-      if (!sel.className) return true;
-      if (ts.isClassDeclaration(node.parent) && node.parent.name?.text === sel.className) return true;
+      if (!sel.className || (ts.isClassDeclaration(node.parent) && node.parent.name?.text === sel.className)) match = true;
     }
     if (sel.kind === 'function' || sel.kind === 'arrow-function') {
       const isArrow = ts.isArrowFunction(node);
       const isFuncDecl = ts.isFunctionDeclaration(node);
-      if (sel.kind === 'function' && !isFuncDecl && !isArrow) return false;
-      if (sel.kind === 'arrow-function' && !isArrow) return false;
-      if (isFuncDecl && node.name?.text === sel.functionName) return true;
-      if (isArrow && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name) && node.parent.name.text === sel.functionName) return true;
+      if (sel.kind === 'function' && !isFuncDecl && !isArrow) match = false;
+      else if (sel.kind === 'arrow-function' && !isArrow) match = false;
+      else if (isFuncDecl && node.name?.text === sel.functionName) match = true;
+      else if (isArrow && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name) && node.parent.name.text === sel.functionName) match = true;
     }
     if (sel.kind === 'property' && sel.path && ts.isPropertyAssignment(node)) {
       let current: ts.Node = node;
       const parts = sel.path.split('.').reverse();
-      for (let i = 0; i < parts.length; i++) {
-        if (!current || !ts.isPropertyAssignment(current)) return false;
-        const name = current.name;
-        let key = '';
-        if (ts.isIdentifier(name) || ts.isStringLiteral(name)) key = name.text;
-        if (key !== parts[i]) return false;
+      let idx = 0;
+      while (current && idx < parts.length) {
+        if (ts.isPropertyAssignment(current) || ts.isVariableDeclaration(current)) {
+          const name = current.name;
+          if (name && (ts.isIdentifier(name) || ts.isStringLiteral(name)) && name.text === parts[idx]) idx++;
+        }
         current = current.parent;
       }
-      return true;
+      if (idx === parts.length) match = true;
     }
     if (sel.kind === 'variable' && ts.isVariableStatement(node)) {
-      if (node.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === sel.variableName)) return true;
+      if (node.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === sel.variableName)) match = true;
     }
-    if (sel.kind === 'statement' && ts.isStatement(node) && node.parent === sf) return true;
-    return false;
+    if (sel.kind === 'statement' && ts.isStatement(node) && node.parent === sf) match = true;
+    
+    return match && isInContext(node, sel.context);
   }
 
   const visit = (node: ts.Node): void => {
@@ -100,6 +122,5 @@ export function findNodeRange(
          return { start: p.parent.parent.getStart(sf), end: p.parent.parent.getEnd() };
      }
   }
-
   return { start: found.getStart(sf), end: found.getEnd() };
 }
