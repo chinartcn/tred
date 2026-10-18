@@ -64,6 +64,14 @@ tred replace --file main.ts \
 ### 声明式流水线 (`tred ops`)
 自带 Schema 校验，字段错直接大白话报错。
 
+## 🤖 AI 原生工作流 (v3.2.0)
+
+如果你在使用 Cursor、Claude 或其它 AI 编程助手，请让 AI 阅读根目录的 **`skill.md`**。
+
+1. **全局感知**：`tred map` 让 AI 免于读取整个源码文件，瞬间掌握项目架构。
+2. **微创修改**：使用 `tred patch`，AI 只需生成极小的 `+` 和 `-` 行，大幅减少出错率和 Token 消耗。
+3. **零误伤**：底层自带语法门禁，哪怕 AI 补丁写错，也绝不破坏原有代码。
+
 ## 📖 更多文档
 完整的 CLI 命令（包含 `replace-many`、`verify`、`strip` 等）与 API 用法，请参阅 [api.md](./api.md)。
 

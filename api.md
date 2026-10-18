@@ -39,7 +39,21 @@ tred ops <ops.json> [--dry-run]
 ```
 自带 Schema 校验，字段缺失时输出中文错误。
 
-### 4. 其他高频命令简表
+### 4. `tred map` 与 `tred patch`
+
+**`tred map`**
+```bash
+tred map [--dir <path>]
+```
+输出整个项目的 JSON 结构树（包含所有类/函数层级和代码行数），非常适合丢给 AI 分析架构。
+
+**`tred patch`**
+```bash
+tred patch --file <path> <diff-file>
+```
+如果未指定 `<diff-file>`，默认从标准输入 (stdin) 读取 unified diff 格式。tred 会在应用补丁后立刻执行语法校验。
+
+### 5. 其他高频命令简表
 | 命令 | 说明 |
 |---|---|
 | `tred replace-many --ops-file <json>` | 仅做批量事务替换（失败全回滚），不支持混合指令。 |

@@ -10,8 +10,10 @@ export interface AstSelector {
   occurrence?: number;
   /** v2.8.0: 开启向量模糊匹配 */
   fuzzy?: boolean;
-  /** v3.0.0: 上下文过滤，如 worker.onmessage */
-  context?: string;
+  /** v3.1.0: 模糊匹配阈值，低于此分数直接报错（0~1） */
+  fuzzyThreshold?: number;
+  /** v3.1.0: 多级上下文，支持 ['class:Worker', 'method:onmessage'] */
+  context?: string | string[];
 }
 
 export interface SnippetSelector {

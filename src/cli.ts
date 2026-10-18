@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname as _dirname, resolve as _resolve, join } from 'node:path';
 import { stripDir } from './strip.js';
 import { grepDir } from './grep.js';
+import { generateMap } from './map.js';
+import { applyPatch } from './patch.js';
 
 const __pkgDir = _dirname(fileURLToPath(import.meta.url));
 const VERSION: string = (JSON.parse(
@@ -169,12 +171,42 @@ function resolveFingerprint(flags: Record<string, string | true>, anchor: string
 }
 
 // @TRED_START: CLI_REPLACE | fp=1d2a4932
+async function cmdMap(flags: Record<string, string | true | string[]>): Promise<number> {
+  const dir = typeof flags.dir === 'string' ? flags.dir : '.';
+  const map = generateMap(dir);
+  process.stdout.write(JSON.stringify(map, null, 2) + '\n');
+  return 0;
+}
+
+async function cmdPatch(flagsRaw: Record<string, string | true | string[]>, positionals: string[]): Promise<number> {
+  const flags: Record<string, string | true> = {};
+  for (const k of Object.keys(flagsRaw)) {
+    const v = flagsRaw[k];
+    flags[k] = Array.isArray(v) ? v[v.length - 1] : v;
+  }
+  const file = requireStr(flags, 'file');
+  let patchText = '';
+  if (positionals[1]) {
+    patchText = readFileSync(positionals[1], 'utf-8');
+  } else {
+    patchText = readFileSync(0, 'utf-8');
+  }
+  const res = applyPatch(file, patchText);
+  if (!res.ok) {
+    console.error('❌ [tred patch] ' + res.message);
+    return 1;
+  }
+  console.log('✓ Patch 应用成功: ' + file);
+  return 0;
+}
+
 async function cmdGrep(flags: Record<string, string | true | string[]>, positionals: string[]): Promise<number> {
   const pattern = positionals[1];
-  if (!pattern) die('用法: tred grep <pattern> [--dir <path>] [--ast]');
+  if (!pattern) die('用法: tred grep <pattern> [--dir <path>] [--ast] [--html]');
   const dir = typeof flags.dir === 'string' ? flags.dir : '.';
   const useAst = Boolean(flags.ast);
-  grepDir(dir, pattern, useAst);
+  const useHtml = Boolean(flags.html);
+  grepDir(dir, pattern, useAst, useHtml);
   return 0;
 }
 
@@ -208,6 +240,8 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
   }
   
   const toArr = (v: any) => (Array.isArray(v) ? v : v ? [v] : undefined);
+  const fuzzThresh = typeof flags['fuzzy-threshold'] === 'string' ? parseFloat(flags['fuzzy-threshold']) : undefined;
+  if (fuzzThresh !== undefined && astSelector) astSelector.fuzzyThreshold = fuzzThresh;
   const occ = typeof flags.occurrence === 'string' ? parseInt(flags.occurrence, 10) : undefined;
   if (astSelector && occ) astSelector.occurrence = occ;
 
@@ -1035,6 +1069,8 @@ export async function cliMain(argv: string[]): Promise<void> {
 
   const cmd = positionals[0];
   if (cmd === 'grep')         { process.exit(await cmdGrep(flags, positionals)); }
+  if (cmd === 'map')          { process.exit(await cmdMap(flags)); }
+  if (cmd === 'patch')        { process.exit(await cmdPatch(flags, positionals)); }
   if (cmd === 'replace')      { process.exit(await cmdReplace(flags)); }
   if (cmd === 'replace-many') { process.exit(await cmdReplaceMany(flags)); }
   if (cmd === 'ast')          { process.exit(await cmdAst(flags)); }

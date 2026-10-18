@@ -4,24 +4,30 @@ import { getSimilarity } from './fuzzy.js';
 
 export interface NodeRange { start: number; end: number; }
 
-export function findNodeRange(
-  fileName: string,
-  source: string,
-  sel: AstSelector,
-): NodeRange | null {
+export function findNodeRange(fileName: string, source: string, sel: AstSelector): NodeRange | null {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
-  let matches: ts.Node[] = [];
+  const matches: ts.Node[] = [];
   const occurrence = sel.occurrence ?? 1;
 
-  // 检查节点是否在指定的上下文中
-  function isInContext(node: ts.Node, contextStr?: string): boolean {
-    if (!contextStr) return true;
+  function isInContext(node: ts.Node, context?: string | string[]): boolean {
+    if (!context) return true;
+    const contexts = Array.isArray(context) ? context : [context];
     let current: ts.Node | undefined = node.parent;
+    const matched = new Set<number>();
+
     while (current) {
-      // 如果父节点是一个 CallExpression，提取它的调用表达式文本（比如 worker.onmessage）
-      if (ts.isCallExpression(current) || ts.isPropertyAccessExpression(current)) {
-        if (current.getText(sf).includes(contextStr)) return true;
+      for (let i = 0; i < contexts.length; i++) {
+        if (matched.has(i)) continue;
+        const ctx = contexts[i];
+        if (ctx.startsWith('class:')) {
+          if (ts.isClassDeclaration(current) && current.name?.text === ctx.slice(6)) matched.add(i);
+        } else if (ctx.startsWith('method:')) {
+          if (ts.isMethodDeclaration(current) && current.name && ts.isIdentifier(current.name) && current.name.text === ctx.slice(7)) matched.add(i);
+        } else {
+          if (current.getText(sf).includes(ctx)) matched.add(i);
+        }
       }
+      if (matched.size === contexts.length) return true;
       current = current.parent;
     }
     return false;
@@ -60,7 +66,8 @@ export function findNodeRange(
       }
       if (score > bestScore) { bestScore = score; bestNode = c.node; }
     }
-    if (bestScore > 0) {
+    const threshold = sel.fuzzyThreshold ?? 0;
+    if (bestScore > threshold) {
        if (ts.isArrowFunction(bestNode!) && ts.isVariableDeclaration(bestNode!.parent) && bestNode!.parent.parent && ts.isVariableDeclarationList(bestNode!.parent.parent) && bestNode!.parent.parent.parent && ts.isVariableStatement(bestNode!.parent.parent.parent)) {
            return { start: bestNode!.parent.parent.parent.getStart(sf), end: bestNode!.parent.parent.parent.getEnd() };
        }
