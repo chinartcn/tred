@@ -159,7 +159,9 @@ export function applyPatch(
       for (const t of extractTokens(line)) if ((globalFreq.get(t) || 1) <= 6) rareTokens.add(t);
     }
 
-    const approxIdx = Math.max(0, oldStart - 1);
+    // 同时 clamp 上界，防止 oldStart 落在 [len - blockLen, len) 时越界
+    const maxIdx = Math.max(0, currentLines.length - oldBlock.length);
+    const approxIdx = Math.min(Math.max(0, oldStart - 1), maxIdx);
     let foundIdx = -1;
 
     for (let i = 0; i <= currentLines.length - oldBlock.length; i++) {

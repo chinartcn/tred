@@ -34,7 +34,7 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
       // 2. 箭头函数属性: renderNode = () => {}
       else if (ts.isPropertyDeclaration(member) && ts.isIdentifier(member.name) && targets.includes(member.name.text)) {
         extractedNodes.push(member);
-        removedRanges.push({ start: member.getStart(sf), end: member.getEnd() });
+        removedRanges.push({ start: member.getFullStart(), end: member.getEnd() });
         foundNames.add(member.name.text);
       }
     }
@@ -82,17 +82,16 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
           const dedented = dedent(inner).trim();
           bodyStr = '{\n  ' + dedented.replace(/\n/g, '\n  ') + '\n}';
         }
-        // 剥离原本方法声明部分的文本，用标准 function 替换
+        // 保留注释
         const fullText = original.slice(node.getFullStart(), node.getEnd()).trim();
-        const bodyStartIdx = fullText.lastIndexOf('{');
-        const headStr = bodyStartIdx !== -1 ? fullText.slice(0, bodyStartIdx).trim() : '';
-        // 如果 headStr 包含原来方法的声明，我们拆掉它
-        const prefix = headStr.replace(/^(?:public|private|protected|static|async|\s)*/g, '').replace(name + '[^{]*$/', '').trim();
-        // 重新构建，保留注释
         let comments = '';
         const commentMatch = fullText.match(/^(\/\*[\s\S]*?\*\/|\/\/[^\n]*\n)+/);
         if (commentMatch) comments = commentMatch[0];
-        text = comments + 'export function ' + name + typeParams + '(this: ' + targetClass + (params ? ', ' + params : '') + ')' + returnType + ' ' + bodyStr;
+        const mods = node.modifiers ?? [];
+        const isAsync = mods.some(m => m.kind === ts.SyntaxKind.AsyncKeyword);
+        const isGenerator = node.asteriskToken !== undefined;
+        const fnKeyword = (isAsync ? 'async function' : 'function') + (isGenerator ? '*' : '');
+        text = comments + 'export ' + fnKeyword + ' ' + name + typeParams + '(this: ' + targetClass + (params ? ', ' + params : '') + ')' + returnType + ' ' + bodyStr;
       } else if (ts.isPropertyDeclaration(node)) {
         const name = (node.name as ts.Identifier).text;
         let comments = '';
