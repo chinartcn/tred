@@ -68,6 +68,34 @@ tred commit -m "feat: refactored ui"
 ```
 自动执行 `verify` 拦截错误，并帮你完成 `git add` 和 `git commit`，坏代码连提交的机会都没有。
 
+## 🛠️ 进阶与救急操作
+
+### 1. 残骸文件抢救 (`--cut-to-end`)
+当文件末尾被意外截断或语法崩溃，AST 无法解析时，可以直接从某个注释切到文件末尾：
+
+```bash
+tred replace --file broken.ts --snippet-start "// ===== ENTRY =====" --cut-to-end --content-file new-tail.ts
+```
+
+### 2. 文件级暴力覆盖 (`kind: "file"`)
+如果连注释都没有，直接用行号或全文覆盖：
+
+```bash
+# 覆盖整个文件
+tred replace --file main.ts --selector '{"kind":"file","scope":"all"}' --content-file new-main.ts
+
+# 从第 50 行删到文件末尾
+tred replace --file main.ts --selector '{"kind":"file","scope":"tail","line":50}' --content ''
+```
+
+### 3. ops.json 的友好校验
+现在的 `tred ops` 支持 `contentFile` 和 `selector`，字段缺失时会输出大白话错误：
+
+```
+❌ op[0]: 必须提供 "content" 或 "contentFile"
+❌ op[0]: 缺少 "file" 字段
+```
+
 ## 完整命令矩阵
 
 | 命令 | 描述 |

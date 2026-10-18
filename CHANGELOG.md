@@ -1,4 +1,11 @@
+## [2.5.0] - 2026-10-18
+### Added
+- **文件级切分（File Selector）**：新增 `kind: "file"` 与 `scope: "head"|"tail"|"all"`，支持无结构文件的暴力覆盖。
+- **残骸抢救（cut-to-end）**：新增 `--cut-to-end` 参数，从指定片段直接切到文件末尾。
+- **Schema 校验优化**：`ops.json` 支持 `contentFile` 和 `selector`；字段缺失时输出明确的大白话报错，不再崩溃。
+
 # Changelog
+
 
 ## [2.1.0] - 2026-10-18
 ### Added

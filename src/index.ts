@@ -74,7 +74,38 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
   // v2.0.0: 多语言解析路由
   const parser = getParser(file);
   
-  if (opts.selector && parser) {
+  if (opts.selector && opts.selector.kind === 'file') {
+    const fs2 = opts.selector as any;
+    const lines = original.split('\n');
+    const lineStarts: number[] = [];
+    let pos = 0;
+    for (let i = 0; i < lines.length; i++) {
+      lineStarts.push(pos);
+      pos += lines[i].length + 1;
+    }
+    let startLine = 0;
+    let endLine = lines.length - 1;
+    if (fs2.scope === 'tail') {
+      if (fs2.snippet) {
+        const idx = lines.findIndex((l) => l.includes(fs2.snippet));
+        if (idx < 0) return { nextSource: null, status: 'failed', message: '找不到 snippet: ' + fs2.snippet };
+        startLine = idx;
+      } else if (fs2.line) { startLine = fs2.line - 1; }
+    } else if (fs2.scope === 'head') {
+      if (fs2.snippet) {
+        const idx = lines.findIndex((l) => l.includes(fs2.snippet));
+        if (idx < 0) return { nextSource: null, status: 'failed', message: '找不到 snippet: ' + fs2.snippet };
+        endLine = idx - 1;
+      } else if (fs2.line) { endLine = fs2.line - 1; }
+    }
+    if (startLine < 0 || endLine >= lines.length || startLine > endLine) {
+      return { nextSource: null, status: 'failed', message: '范围非法' };
+    }
+    const startPos = lineStarts[startLine];
+    const endPos = lineStarts[endLine] + lines[endLine].length;
+    range = { start: startPos, end: endPos };
+    status = 'replaced';
+  } else if (opts.selector && parser) {
     range = parser.findNode(original, opts.selector);
     if (!range) return { nextSource: null, status: 'failed', message: 'AST 找不到节点 (Parser: ' + file + ')' };
     status = 'replaced';

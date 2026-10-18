@@ -33,8 +33,10 @@ export function findSnippetRange(
 
   if (startLineIdx < 0 || startLineIdx >= lines.length) return null;
 
-  // 2. 找结束行
-  if (sel.endLine !== undefined) {
+  // 2. 找结束行（v2.5.0: cutToEnd 优先级最高）
+  if (sel.cutToEnd) {
+    endLineIdx = lines.length - 1;
+  } else if (sel.endLine !== undefined) {
     endLineIdx = sel.endLine - 1;
   } else if (sel.endSnippet) {
     for (let i = startLineIdx; i < lines.length; i++) {

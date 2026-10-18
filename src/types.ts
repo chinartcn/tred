@@ -17,9 +17,19 @@ export interface SnippetSelector {
   endSnippet?: string;
   /** 有多处匹配时，取第几个，默认 1 */
   occurrence?: number;
+  /** v2.5.0: 强制从 start 切到文件末尾（救急残留代码） */
+  cutToEnd?: boolean;
 }
 
 export type Formatter = (source: string, file: string) => string | Promise<string>;
+
+// v2.5.0: 文件级切分
+export interface FileSelector {
+  kind: 'file';
+  scope: 'head' | 'tail' | 'all';
+  line?: number;
+  snippet?: string;
+}
 
 export interface ReplaceAssertions {
   /** 新内容必须包含这些文本 */

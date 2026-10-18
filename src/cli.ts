@@ -206,6 +206,7 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
   if (flags['snippet-end-line']) snippetSelector.endLine = parseInt(flags['snippet-end-line'] as string, 10);
   if (flags['snippet-start']) snippetSelector.startSnippet = flags['snippet-start'] as string;
   if (flags['snippet-end']) snippetSelector.endSnippet = flags['snippet-end'] as string;
+  if (flags['cut-to-end']) snippetSelector.cutToEnd = true;
   if (occ) snippetSelector.occurrence = occ;
 
   const hasSnippet = Object.keys(snippetSelector).length > 0;
