@@ -10,6 +10,8 @@ import { dirname as _dirname, resolve as _resolve, join } from 'node:path';
 import { stripDir } from './strip.js';
 import { grepDir } from './grep.js';
 import { generateMap } from './map.js';
+import { analyzeImpact } from './impact.js';
+import { splitFile } from './split.js';
 import { applyPatch } from './patch.js';
 
 const __pkgDir = _dirname(fileURLToPath(import.meta.url));
@@ -171,6 +173,31 @@ function resolveFingerprint(flags: Record<string, string | true>, anchor: string
 }
 
 // @TRED_START: CLI_REPLACE | fp=1d2a4932
+async function cmdImpact(flags: Record<string, string | true | string[]>, positionals: string[]): Promise<number> {
+  const target = positionals[1];
+  if (!target) die('用法: tred impact <targetName> [--dir <path>]');
+  const dir = typeof flags.dir === 'string' ? flags.dir : '.';
+  const report = analyzeImpact(dir, target);
+  console.log(report);
+  return 0;
+}
+
+async function cmdSplit(flagsRaw: Record<string, string | true | string[]>, positionals: string[]): Promise<number> {
+  const flags: Record<string, string | true> = {};
+  for (const k of Object.keys(flagsRaw)) {
+    const v = flagsRaw[k];
+    flags[k] = Array.isArray(v) ? v[v.length - 1] : v;
+  }
+  const file = requireStr(flags, 'file');
+  const name = requireStr(flags, 'name');
+  const to = requireStr(flags, 'to');
+  const targets = name.split(',').map(s => s.trim());
+  const res = splitFile(file, targets, to);
+  if (!res.ok) { console.error('❌ [tred split] ' + res.message); return 1; }
+  console.log('✅ [tred split] ' + res.message);
+  return 0;
+}
+
 async function cmdMap(flags: Record<string, string | true | string[]>): Promise<number> {
   const dir = typeof flags.dir === 'string' ? flags.dir : '.';
   const map = generateMap(dir);
@@ -1070,6 +1097,8 @@ export async function cliMain(argv: string[]): Promise<void> {
   const cmd = positionals[0];
   if (cmd === 'grep')         { process.exit(await cmdGrep(flags, positionals)); }
   if (cmd === 'map')          { process.exit(await cmdMap(flags)); }
+  if (cmd === 'impact')       { process.exit(await cmdImpact(flags, positionals)); }
+  if (cmd === 'split')        { process.exit(await cmdSplit(flags, positionals)); }
   if (cmd === 'patch')        { process.exit(await cmdPatch(flags, positionals)); }
   if (cmd === 'replace')      { process.exit(await cmdReplace(flags)); }
   if (cmd === 'replace-many') { process.exit(await cmdReplaceMany(flags)); }

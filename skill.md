@@ -52,3 +52,16 @@ tred 会自动替换这几行，并执行语法校验，绝不会破坏整个文
 ```bash
 tred replace --file src/a.ts --selector '{"kind":"function","functionName":"updStat","fuzzy":true,"fuzzyThreshold":0.8}' --content "..."
 ```
+
+## 5. 防范重构崩溃（重要）
+在修改全局常量、接口或公共函数之前，**必须**运行影响分析：
+```bash
+tred impact ITEMS --dir src
+```
+如果输出报告显示被 10 个文件引用，务必检查这些文件。
+
+## 6. 拆分巨型文件
+如果文件超过 1000 行，需要将部分函数拆分出去，使用：
+```bash
+tred split --file giant.ts --name foo,bar --to util.ts
+```

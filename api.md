@@ -53,7 +53,19 @@ tred patch --file <path> <diff-file>
 ```
 如果未指定 `<diff-file>`，默认从标准输入 (stdin) 读取 unified diff 格式。tred 会在应用补丁后立刻执行语法校验。
 
-### 5. 其他高频命令简表
+### 5. `tred impact` 依赖分析
+```bash
+tred impact <targetName> [--dir <path>]
+```
+分析目标符号被引用的次数与具体位置（包含所在的函数/类）。
+
+### 6. `tred split` 自动拆分
+```bash
+tred split --file <path> --name <func1,func2> --to <new.ts>
+```
+自动提取原文件中的顶层函数到新文件，并自动修复原文件的 import 和新文件的 export。
+
+### 7. 其他高频命令简表
 | 命令 | 说明 |
 |---|---|
 | `tred replace-many --ops-file <json>` | 仅做批量事务替换（失败全回滚），不支持混合指令。 |
