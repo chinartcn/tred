@@ -1,6 +1,6 @@
 {
   "name": "@rtcn/tred",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "type": "module",
   "description": "Anchor + AST precise find-and-replace with syntax validation, atomic writes, and idempotent fingerprints.",
   "scripts": {

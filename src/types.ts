@@ -1,9 +1,11 @@
 export interface AstSelector {
-  kind: 'class' | 'function' | 'method' | 'statement' | 'variable';
+  kind: 'class' | 'function' | 'arrow-function' | 'method' | 'statement' | 'variable' | 'property';
   className?: string;
   functionName?: string;
   methodName?: string;
   variableName?: string;
+  /** property 的路径，如 "TECHS.铁矿机.cost" */
+  path?: string;
   /** 如果有多个匹配，指定第几个（1-based），默认 1 */
   occurrence?: number;
 }

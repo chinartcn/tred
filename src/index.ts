@@ -126,6 +126,11 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
     const endPos = lineStarts[endLine] + lines[endLine].length;
     range = { start: startPos, end: endPos };
     status = 'replaced';
+  } else if (opts.selector && !parser) {
+    range = findNodeRange(file, original, opts.selector as any);
+    if (!range) return { nextSource: null, status: 'failed', message: 'AST 找不到节点。建议：如果是局部作用域或复杂属性，请改用 kind: "file" 覆盖' };
+    indent = detectIndent(original, range.start);
+    status = 'replaced';
   } else if (opts.selector && parser) {
     range = parser.findNode(original, opts.selector);
     if (!range) return { nextSource: null, status: 'failed', message: 'AST 找不到节点 (Parser: ' + file + ')' };
@@ -178,7 +183,17 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
   } else if (opts.anchor) {
     newBlock = buildBlock(opts.anchor, fingerprint, content, indent);
   } else {
-    newBlock = indentLines(normalized, indent);
+    // 核心修复：判断是否在行首，如果在行首，才统一加缩进，否则首行保持原样
+    const lineStartPos = original.lastIndexOf('\n', range.start) + 1;
+    const beforeNode = original.slice(lineStartPos, range.start);
+    const isAtLineStart = beforeNode.trim().length === 0;
+    
+    if (isAtLineStart) {
+      newBlock = indentLines(normalized, indent);
+    } else {
+      const lines = normalized.split('\n');
+      newBlock = lines[0] + lines.slice(1).map((l: string) => l ? indent + l : l).join('\n');
+    }
   }
 
   const oldCode = original.slice(range.start, range.end);

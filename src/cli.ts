@@ -189,7 +189,7 @@ async function cmdReplace(flagsRaw: Record<string, string | true | string[]>): P
   if (typeof flags.selector === 'string') {
     try {
       genericSelector = JSON.parse(flags.selector);
-      if (['class','method','function','statement','variable'].includes(genericSelector.kind)) {
+      if (['class','method','function','arrow-function','statement','variable','property'].includes(genericSelector.kind)) {
         astSelector = genericSelector as AstSelector;
       }
     } catch {
