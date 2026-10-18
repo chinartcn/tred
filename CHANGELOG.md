@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.5.0] - 2026-10-18
+### Added (Smart Healing)
+- **`--auto-heal`**：当模糊匹配因上下文微小差异（如 `count: 1` vs `count: 2`）而失败时，自动纠正补丁上下文，重新校验并精准应用。
+- **`--html`**：当补丁无法自动应用时，生成 `tred-suggest.html`，在浏览器中以 Split Diff 视图查看当前代码与补丁目标代码的并排对比。
+
 ## [3.4.0] - 2026-10-18
 ### Added
 - **智能纠错建议 (`tred suggest`)**：当 `tred patch --fuzzy` 失败时，自动展示最佳候选的上下文，并生成降低阈值的重试命令。

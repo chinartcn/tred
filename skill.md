@@ -87,3 +87,8 @@ tred patch --file a.ts diff.patch --fuzzy --fuzzy-min-rare 1
 
 ## 8. 遇到打不上补丁怎么办？
 如果你的 diff 匹配分数不够（如 88%），`tred` 会提示你。你可以复制它给出的 `--fuzzy-threshold` 命令直接重试。
+
+## 9. 补丁自愈与可视化
+如果你的 diff 因为文件被格式化过而打不上，可以：
+1. 使用 `--auto-heal` 让引擎自动修正上下文并打入。
+2. 使用 `--html` 生成浏览器视图，自己肉眼 review 后再调低阈值重试。

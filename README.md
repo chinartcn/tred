@@ -87,6 +87,22 @@ tred replace --file main.ts \
    tred patch --file ... --fuzzy --fuzzy-threshold 0.94
 ```
 
+## 💡 智能纠错与自愈 (v3.5.0)
+
+当 `tred patch` 因为微小的上下文差异（比如文件已被格式化，或 `count: 1` 变成了 `count: 2`）而无法直接打上补丁时，它提供两种终极方案：
+
+**1. 自动修复补丁 (`--auto-heal`)**
+```bash
+cat diff.patch | tred patch --file a.ts --fuzzy --auto-heal
+```
+引擎会自动对比上下文，把补丁里过时的 `-` 行修正为当前文件的最新内容，然后**无缝打上**。
+
+**2. 可视化冲突审查 (`--html`)**
+```bash
+cat diff.patch | tred patch --file a.ts --fuzzy --html
+```
+如果相似度未达阈值，会生成 `tred-suggest.html`。用浏览器打开，左侧是当前代码，右侧是补丁目标，纯正的 IDE Split Diff 体验。
+
 ## 📖 更多文档
 完整的 CLI 命令（包含 `replace-many`、`verify`、`strip` 等）与 API 用法，请参阅 [api.md](./api.md)。
 

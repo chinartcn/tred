@@ -192,7 +192,9 @@ async function cmdPatch(flagsRaw: Record<string, string | true | string[]>, posi
   const fuzzy = Boolean(flags.fuzzy);
   const fuzzyThreshold = typeof flags['fuzzy-threshold'] === 'string' ? parseFloat(flags['fuzzy-threshold']) : undefined;
   const minRareTokens = typeof flags['fuzzy-min-rare'] === 'string' ? parseInt(flags['fuzzy-min-rare'], 10) : undefined;
-  const res = applyPatch(file, patchText, { fuzzy, fuzzyThreshold, minRareTokens });
+  const autoHeal = Boolean(flags['auto-heal']);
+  const html = Boolean(flags.html);
+  const res = applyPatch(file, patchText, { fuzzy, fuzzyThreshold, minRareTokens, autoHeal, html });
 
   if (!res.ok) {
     console.error('❌ [tred patch] ' + res.message);
