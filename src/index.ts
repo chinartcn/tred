@@ -195,6 +195,7 @@ export async function replace(opts: ReplaceOptions): Promise<ReplaceResult> {
   return result;
 }
 
+// @TRED_START: REPLACEMANY | fp=3608c023
 export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOptions): Promise<BatchResult> {
   const anyDryRun = ops.some(function (o) { return Boolean(o.dryRun); });
   const continueOnError = Boolean(options?.continueOnError);
@@ -220,7 +221,7 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
     return { status: 'rolled-back', results: results, committedFiles: [] };
   }
 
-  // 阶段 2：按文件分组（跳过缺失文件）
+  // 阶段 2：按文件分组
   const groups = new Map<string, { op: ReplaceOptions; index: number }[]>();
   for (let i = 0; i < ops.length; i++) {
     const op = ops[i];
@@ -231,9 +232,11 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
 
   const originals = new Map<string, string>();
   const pending = new Map<string, string>();
+  let earlyExit: BatchResult | null = null;
 
-  // 阶段 3：串行 compute（同文件多 op 基于上一个 nextSource）
-  for (const [file, items] of groups) {
+  // 阶段 3：文件级并发（每个文件内部 op 仍串行）
+  const fileTasks = Array.from(groups.entries()).map(async ([file, items]) => {
+    if (earlyExit) return;
     const original = readFileSync(file, 'utf-8');
     originals.set(file, original);
     let source = original;
@@ -261,7 +264,7 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
       };
       if (c.status === 'failed') {
         failedInThisFile = true;
-        // 回写同文件已成功 compute 的 op 状态：本文件整体 skip，前面 op 的改动未落地
+        // 回写同文件已成功 compute 的 op 状态：本文件整体 skip
         for (const prev of items) {
           if (prev.index === item.index) break;
           const pr = results[prev.index];
@@ -275,7 +278,7 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
           }
         }
         if (!continueOnError) {
-          return { status: 'rolled-back', results: results, committedFiles: [] };
+          earlyExit = { status: 'rolled-back', results: results, committedFiles: [] };
         }
       } else if (c.nextSource !== null) {
         source = c.nextSource;
@@ -283,19 +286,21 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
       }
     }
     if (!failedInThisFile && dirty) pending.set(file, source);
-  }
+  });
+
+  await Promise.all(fileTasks);
+  if (earlyExit) return earlyExit;
 
   if (anyDryRun) {
     return { status: 'dry-run', results: results, committedFiles: [] };
   }
 
-  // 阶段 4：提交
+  // 阶段 4：提交（必须串行，保证事务语义）
   const writer = options?._writer ?? atomicWrite;
   const committed: string[] = [];
   const attempted = Array.from(pending.keys());
 
   if (continueOnError) {
-    // 尽力而为：每文件独立提交，失败不影响其他文件
     for (const [file, nextSource] of pending) {
       try {
         writer(file, nextSource);
@@ -323,7 +328,6 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
     return { status: 'committed', results: results, committedFiles: committed };
   }
 
-  // 非 continueOnError：原有全事务回滚 + rollbackLog
   let failedFile: string | null = null;
   let commitError: string | null = null;
   const rollbackErrors: { file: string; message: string }[] = [];
@@ -341,13 +345,9 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
   } catch (e) {
     commitError = e instanceof Error ? e.message : String(e);
     for (const file of committed) {
-      try {
-        writer(file, originals.get(file)!);
-      } catch (err) {
-        rollbackErrors.push({
-          file: file,
-          message: err instanceof Error ? err.message : String(err),
-        });
+      try { writer(file, originals.get(file)!); }
+      catch (err) {
+        rollbackErrors.push({ file: file, message: err instanceof Error ? err.message : String(err) });
       }
     }
 
@@ -364,9 +364,7 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
               failed: failedFile,
               rollbackErrors: rollbackErrors,
             },
-            ops: results.map(function (r) {
-              return Object.assign({}, r);
-            }),
+            ops: results.map(function (r) { return Object.assign({}, r); }),
           },
           options.rollbackLog,
         );
@@ -375,16 +373,12 @@ export async function replaceMany(ops: ReplaceOptions[], options?: ReplaceManyOp
       }
     }
 
-    return {
-      status: 'rolled-back',
-      results: results,
-      committedFiles: [],
-      error: commitError,
-    };
+    return { status: 'rolled-back', results: results, committedFiles: [], error: commitError };
   }
 
   return { status: 'committed', results: results, committedFiles: committed };
 }
+// @TRED_END: REPLACEMANY
 
 // v0.5: verify
 export { scanFileAnchors, verifyDir } from './verify.js';
