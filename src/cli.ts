@@ -7,6 +7,7 @@ import type { AnnotateDirResult, AnnotateResult, AstSelector, DiffDirResult, Fix
 
 import { fileURLToPath } from 'node:url';
 import { dirname as _dirname, resolve as _resolve, join } from 'node:path';
+import { stripDir } from './strip.js';
 
 const __pkgDir = _dirname(fileURLToPath(import.meta.url));
 const VERSION: string = (JSON.parse(
@@ -1028,6 +1029,7 @@ export async function cliMain(argv: string[]): Promise<void> {
   
   // v1.3.0: ops 声明式执行
   if (cmd === 'commit')       { process.exit(await cmdCommit(flags)); }
+  if (cmd === 'strip')        { process.exit(await cmdStrip(flags)); }
   if (cmd === 'ops' || (cmd && cmd.endsWith('.json'))) {
     const opsFile = cmd.endsWith('.json') ? cmd : positionals[1];
     if (!opsFile) die('用法: tred ops <ops.json>');
@@ -1075,5 +1077,24 @@ async function cmdCommit(flags: Record<string, string | true | string[]>): Promi
   }
 
   console.log('[tred commit] ✅ 提交成功！');
+  return 0;
+}
+
+async function cmdStrip(flags: Record<string, string | true | string[]>): Promise<number> {
+  const dir = typeof flags.dir === 'string' ? flags.dir : '.';
+  const apply = Boolean(flags.apply);
+  
+  console.log('[tred strip] 扫描目录: ' + dir + (apply ? ' (写入模式)' : ' (dry-run)'));
+  const count = stripDir(dir, apply);
+  
+  if (count === 0) {
+    console.log('  ✓ 没有需要清理的锚点。');
+  } else {
+    if (apply) {
+      console.log('  ✓ 已从 ' + count + ' 个文件中剥离了内部锚点。');
+    } else {
+      console.log('  ℹ 发现 ' + count + ' 个文件包含内部锚点。加 --apply 执行清理。');
+    }
+  }
   return 0;
 }
