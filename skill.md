@@ -65,3 +65,22 @@ tred impact ITEMS --dir src
 ```bash
 tred split --file giant.ts --name foo,bar --to util.ts
 ```
+
+## 7. tred patch 打不上怎么办？
+如果 `tred patch` 报"未找到匹配位置"，说明：
+1. 补丁的 hunk 行号偏离真实位置超过 50 行
+2. 且上下文里的稀有标识符（唯一常量名、唯一函数名）不足以触发模糊匹配
+
+解决方案：
+```bash
+# 显式开启模糊匹配（Rare-Token × TF-IDF 加权）
+tred patch --file a.ts diff.patch --fuzzy
+
+# 调低阈值放宽匹配（默认 0.9）
+tred patch --file a.ts diff.patch --fuzzy --fuzzy-threshold 0.8
+
+# 允许更少的稀有标识符（默认 2 个）
+tred patch --file a.ts diff.patch --fuzzy --fuzzy-min-rare 1
+```
+
+核心原则：**"打不上"比"打错了"安全**。模糊匹配只在显式 `--fuzzy` 时启用，且要求 hunk 具备足够的稀有标识符作为锚点。

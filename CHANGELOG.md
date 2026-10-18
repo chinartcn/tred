@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.3.6] - 2026-10-18
+### Performance
+- **Rare-Token × TF-IDF 模糊匹配**：`tred patch --fuzzy` 基于稀有标识符与 TF-IDF 加权评分，大幅降低结构相似代码（如配方面板）的误伤率。
+- 融合字符级 Dice 校验，可感知 `count: 1` vs `count: 2` 等细微语义差异。
+- `oldStart` 超出文件末尾时自动退化为全文件扫描。
+
 ## [3.3.0] - 2026-10-25
 ### Added (Architect Level)
 - **`tred impact`**：自动依赖分析。修改全局配置或函数前，一键查清它在哪些文件、哪些类/函数中被引用。

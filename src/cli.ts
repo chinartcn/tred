@@ -188,7 +188,9 @@ async function cmdPatch(flagsRaw: Record<string, string | true | string[]>, posi
   } else {
     patchText = readFileSync(0, 'utf-8');
   }
-  const res = applyPatch(file, patchText);
+  const fuzzy = Boolean(flags.fuzzy);
+  const fuzzyThreshold = typeof flags['fuzzy-threshold'] === 'string' ? parseFloat(flags['fuzzy-threshold']) : undefined;
+  const res = applyPatch(file, patchText, { fuzzy, fuzzyThreshold });
   if (!res.ok) {
     console.error('❌ [tred patch] ' + res.message);
     return 1;
