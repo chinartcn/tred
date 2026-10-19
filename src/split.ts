@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
+import { basename, dirname, relative, resolve } from 'node:path'; // P0_to_path
 import ts from 'typescript';
 import { checkSyntax } from './safety.js';
 
@@ -45,6 +45,13 @@ function generatePrivateShell(node: ts.MethodDeclaration, sf: ts.SourceFile, imp
   ].join('\n');
 }
 
+function isAbsolutePath(p: string): boolean {
+  // P0_to_path: 简单跨平台绝对路径检测
+  if (p.startsWith('/')) return true;
+  if (/^[A-Za-z]:[\\/]/.test(p)) return true;
+  return false;
+}
+
 function getIndentAt(source: string, pos: number): string {
   let lineStart = pos;
   while (lineStart > 0 && source[lineStart - 1] !== '\n') lineStart--;
@@ -57,6 +64,27 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   // P0_1_P0_2_P1_3_P1_4
   const original = readFileSync(filePath, 'utf-8');
   const sf = ts.createSourceFile(filePath, original, ts.ScriptTarget.Latest, true);
+
+  // P0_to_path_ordered: --to 路径解析（必须在 newFileLines 之前声明）
+  function importPathFrom(from: string, to: string): string {
+    const rel = relative(dirname(from), to).replace(/\\/g, '/');
+    const noExt = rel.replace(/\.ts$/, '');
+    return noExt.startsWith('.') ? noExt + '.js' : './' + noExt + '.js';
+  }
+
+  const fullNewPath = (() => {
+    const norm = newFileName.replace(/\\/g, '/');
+    if (isAbsolutePath(norm)) return norm;
+    if (norm.includes('/')) {
+      // 用户写的是相对 cwd 的路径（如 src/core/engine-render.ts），直接按 cwd 解析
+      return resolve(norm);
+    }
+    // 纯文件名：相对于原文件所在目录
+    return resolve(filePath, '..', norm);
+  })();
+
+  const importFromOrig = importPathFrom(filePath, fullNewPath);
+  const importFromNew = importPathFrom(fullNewPath, filePath);
 
   const extractedNodes: ts.Node[] = [];
   const extractedMethodNames = new Set<string>();
@@ -435,7 +463,7 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   const importNames: string[] = [];
 
   if (targetClass) {
-    newFileLines.push("import type { " + targetClass + " } from './" + basename(filePath).replace(/\.ts$/, '.js') + "';");
+    newFileLines.push("import type { " + targetClass + " } from '" + importFromNew + "';");
     for (const imp of copiedImports) newFileLines.push(imp);
     newFileLines.push('');
   } else {
@@ -537,7 +565,6 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   }
 
   const newContent = newFileLines.join('\n');
-  const fullNewPath = resolve(filePath, '..', newFileName);
 
   const newSyntaxErrors = checkSyntax(fullNewPath, newContent);
   if (newSyntaxErrors.length > 0) {
@@ -555,7 +582,7 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   const newBaseName = basename(newFileName).replace(/\.ts$/, '.js');
   if (targetClass) {
     // P0-2: 全薄壳，无 Object.assign
-    const importStmt = 'import { ' + importNames.join(', ') + " } from './" + newBaseName + "';";
+    const importStmt = 'import { ' + importNames.join(', ') + " } from '" + importFromOrig + "';";
     origText = importStmt + '\n' + origText;
   } else {
     const hasExport = extractedNodes.some(n => {
@@ -563,7 +590,7 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
       const mods = ts.getModifiers(n);
       return mods ? mods.some((m: ts.ModifierLike) => m.kind === ts.SyntaxKind.ExportKeyword) : false;
     });
-    const importStmt = 'import { ' + importNames.join(', ') + " } from './" + newBaseName + "';";
+    const importStmt = 'import { ' + importNames.join(', ') + " } from '" + importFromOrig + "';";
     const reExport = hasExport ? '\nexport { ' + importNames.join(', ') + ' };\n' : '';
     origText = importStmt + '\n' + origText + reExport;
   }
