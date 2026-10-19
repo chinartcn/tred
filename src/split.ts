@@ -233,7 +233,8 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   function downgradePrivateAccess(code: string): string {
     let newCode = code;
     for (const access of thisAccesses) {
-      if (allPrivateFields.has(access) || allPrivateMethods.has(access)) {
+      // 只要原类里有这个成员（无论是不是拆分时带上的），统统降级
+      if (allPrivateFields.has(access) || allPrivateMethods.has(access) || privateFields.has(access) || privateMethods.has(access)) {
         const re = new RegExp('\\bthis\\.' + access + '\\b', 'g');
         newCode = newCode.replace(re, '(this as any).' + access);
       }
@@ -524,6 +525,7 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
           else indentedLines.push('  ' + line);
         }
         bodyStr = '{\n' + indentedLines.join('\n') + '\n}';
+      bodyStr = downgradePrivateAccess(bodyStr);
       }
 
       const allParams = 'this: ' + targetClass + (params ? ', ' + params : '');
@@ -557,6 +559,7 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
             else indentedLines.push('  ' + line);
           }
           bodyStr = '{\n' + indentedLines.join('\n') + '\n}';
+      bodyStr = downgradePrivateAccess(bodyStr);
         }
         const fnKw = isAsync ? 'async function' : 'function';
         text = comments + 'export const ' + exportName + ' = ' + fnKw + '(this: ' + targetClass + (params ? ', ' + params : '') + ')' + returnType + ' ' + bodyStr + ';';
