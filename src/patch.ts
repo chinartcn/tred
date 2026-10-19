@@ -1,6 +1,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { checkSyntax } from './safety.js';
 import { getSimilarity } from './fuzzy.js';
+import { tokenize, calcBM25 } from './bm25.js';
+import { getAstShape, lcsRatio } from './ast-shape.js';
+import { minHashJaccard } from './minhash.js';
 import { getEmbedding, getCache, saveCache } from './embedding.js';
 import { buildAndSearch } from './vector-index.js';
 
@@ -265,8 +268,15 @@ export async function applyPatch(
       const isOutOfBounds = approxIdx + 100 > currentLines.length;
       const startSearch = isOutOfBounds ? 0 : Math.max(0, approxIdx - 100);
       const endSearch = isOutOfBounds ? currentLines.length - oldBlock.length : Math.min(currentLines.length - oldBlock.length, approxIdx + 100);
-      // P0_2_arbitration + P1_3_explain: 收集所有候选用于仲裁和 explain
+      
+      // P0_2_arbitration: 收集所有候选用于仲裁
       const candidates: { score: number, rareHits: number, idx: number, charSimAvg: number, tokenSimAvg: number, keyLines: number, keyHits: number }[] = [];
+
+      // 🚀 v4.0 混合算法预计算
+      const hunkText = oldBlock.join('\n');
+      const hunkTokens = tokenize(hunkText);
+      const hunkShape = getAstShape(hunkText);
+      const avgLen = hunkTokens.length;
 
       for (let i = startSearch; i <= endSearch; i++) {
         const windowTokenSet = new Set<string>();
@@ -278,42 +288,50 @@ export async function applyPatch(
         for (const t of rareTokens) if (windowTokenSet.has(t)) rareHits++;
         if (rareHits < minRareTokens) continue;
 
-        let totalScore = 0, totalWeight = 0;
-        let keyLineCount = 0, keyLineHitCount = 0; // P1_rare_line_boost
-        let charSimSum = 0, tokenSimSum = 0;
+        const candLines = currentLines.slice(i, i + oldBlock.length);
+        const candText = candLines.join('\n');
+        const candTokens = tokenize(candText);
+
+        // Layer 1: BM25 粗排 (0~1)
+        const bm25Raw = calcBM25(hunkTokens, candTokens, avgLen);
+        const bm25Score = Math.min(1, bm25Raw / (hunkTokens.length || 1));
+
+        // Layer 2: AST Shape LCS (0~1)
+        const candShape = getAstShape(candText);
+        const shapeScore = lcsRatio(hunkShape, candShape);
+
+        // Layer 2.5: MinHash Jaccard (0~1)
+        const hashScore = minHashJaccard(hunkTokens, candTokens);
+
+        // 三轨融合 (BM25 0.3, AST Shape 0.4, MinHash 0.3)
+        let finalScore = bm25Score * 0.3 + shapeScore * 0.4 + hashScore * 0.3;
+
+        // 原有 P1 的稀有词加权兜底
+        let keyLineCount = 0, keyLineHitCount = 0;
         for (let j = 0; j < oldBlock.length; j++) {
-          const detail = weightedLineSimilarityDetail(currentLines[i + j] || '', oldBlock[j]);
-          const sim = detail.score;
-          charSimSum += detail.charSim;
-          tokenSimSum += detail.tokenSim;
-          let lineHasRare = false;
-          for (const t of extractTokens(oldBlock[j])) if (rareTokens.has(t)) { lineHasRare = true; break; }
           let lineHasUnique = false;
           for (const t of extractTokens(oldBlock[j])) if (uniqueTokens.has(t)) { lineHasUnique = true; break; }
           if (lineHasUnique) {
             keyLineCount++;
+            const sim = getSimilarity(candLines[j] || '', oldBlock[j]);
             if (sim >= 0.9) keyLineHitCount++;
           }
-          totalScore += sim * (lineHasRare ? 2 : 1);
-          totalWeight += (lineHasRare ? 2 : 1);
         }
-        let finalScore = totalWeight > 0 ? totalScore / totalWeight : 0;
-        // P1_rare_line_boost: 所有"含唯一 token"的行都接近完美命中 → 至少 93%
         if (keyLineCount > 0 && keyLineHitCount === keyLineCount && finalScore < 0.93) {
           finalScore = 0.93;
         }
+
         if (finalScore > 0) candidates.push({
           score: finalScore,
           rareHits,
           idx: i,
-          charSimAvg: oldBlock.length > 0 ? charSimSum / oldBlock.length : 0,
-          tokenSimAvg: oldBlock.length > 0 ? tokenSimSum / oldBlock.length : 0,
+          charSimAvg: 0,
+          tokenSimAvg: 0,
           keyLines: keyLineCount,
           keyHits: keyLineHitCount,
         });
       }
 
-      // P0_2_arbitration: 排序 + 取 top2
       candidates.sort((a, b) => b.score - a.score);
       
       // 🚀 v3.9.1 Hybrid Search 精排 (HNSW)

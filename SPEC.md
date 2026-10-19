@@ -1,66 +1,96 @@
-# tred 工程契约与规范 (v3.8.5)
+# tred 工程契约与规范 (v4.0.0)
 
-## 一、 CST (Changes Long Text) 语法规范
+本文件定义了 `tred` 解析和执行的底层标准，供高级集成和自定义脚本调用参考。
+
+## 一、 CST 宏脚本规范
 
 ### 1. 块与转义
-- 长文本以 `content:` 开头，遇到**未经转义**且**独占一行**的 `/#end` 结束。
-- **转义规则**：若代码中恰好包含 `/#end` 字符串，请转义为 `\/#end`。引擎会自动将其还原为普通文本。
-  - 若代码本身就需要字面量 `\/#end`，请写 `\\/#end`。
-  - **去缩进（Dedent）**：块解析完毕后，引擎会去除 `content` 内容的第一行非空缩进。转义处理在解析时发生，因此不受缩进影响。
-- **Node.js 安全**：`/#nodejs` 块默认被禁用。若需执行，必须加 `--allow-nodejs`，或在 `.tred/config.json` 中开启。
-- **执行边界**：若脚本包含 `/#nodejs` 但未开启权限，引擎会直接**整体拒绝**（Fail-fast），不会执行前面的任何指令。
+- 长文本以 `content:` 开头，遇到**独占一行**的 `/#end` 结束。
+- 转义规则：
+  - 若你的代码里有一整行是 `/#end`，请写成 `\/#end`。
+  - 若需字面量 `\/#end`，请写成 `\\/#end`。
+- 缩进处理：解析器在提取 `content:` 的内容后，会自动计算公共前导缩进（Dedent），因此无需担心在 `.cst` 文件中包裹代码时的排版缩进。
 
-### 2. 完整指令字典
-#### `replace` / `patch` / `split`
-（语法同前略）
+### 2. 指令字典
+- `replace {}`：AST 替换。
+  - `file` (string, 必填)：目标文件路径。
+  - `selector` (string, 必填)：AST Selector 的 JSON 字符串。
+  - `content` (block, 必填)：替换后的长文本代码。
+- `patch {}`：应用 Diff。
+  - `file` (string, 必填)：目标文件路径。
+  - `fuzzy` (boolean, 可选)：开启模糊匹配。
+  - `content` (block, 必填)：放入标准的 unified diff 文本。
+- `split {}`：方法定向拆分。
+  - `file` (string, 必填)：源文件。
+  - `name` (string, 必填)：逗号分隔的方法名。
+  - `to` (string, 必填)：新文件路径。
+  - `class` (string, 可选)：指定类名。
+
+### 3. Node.js 沙箱安全
+`/#nodejs` 块默认被禁用。若引擎检测到该块但未获得授权，将直接触发 **Fail-fast（整体拒绝执行）**，连前面的 `replace` 也不会生效。
+- 授权方式 1：CLI 参数 `--allow-nodejs`。
+- 授权方式 2：`.tred/config.json` 中配置 `{"allowNodejs": true}`。
+
+---
 
 ## 二、 AST Selector JSON Schema
-所有选择器均支持 `occurrence?: number`（当有多个同名节点时，按 AST 遍历顺序选择第 n 个，从 1 开始）。
-```typescript
-type Selector = 
-  | { kind: "class", className: string, occurrence?: number }
-  | { kind: "function", functionName: string, occurrence?: number }
-  | { kind: "method", className: string, methodName: string, occurrence?: number }
-  | { kind: "variable", variableName: string, occurrence?: number }
-  | { kind: "property", path: string, occurrence?: number } // path 格式为 a.b.c
-  | { kind: "file", scope: "head" | "tail" | "all", line?: number, snippet?: string }; 
-```
-- **file.line**：从 1 开始（1-based）。
-- **file.snippet**：多行时逐行进行精确包含匹配。
-- **file.scope**：`head` 或 `tail` 不指定行数时，从文件第一/最后一行起算。
 
-## 三、 MCP Tool 完整 Schema
+所有选择器均支持 `occurrence?: number`（整数，从 1 开始），用于在同名节点中选择第 N 个（按 AST 遍历顺序）。
+
+    type Selector = 
+      | { kind: "class", className: string }
+      | { kind: "function", functionName: string }
+      | { kind: "method", className: string, methodName: string }
+      | { kind: "variable", variableName: string }
+      | { kind: "property", path: string }
+      | { kind: "file", scope: "head" | "tail" | "all", line?: number, snippet?: string };
+
+- **property**：`path` 格式为 `a.b.c`（无前导 `$`）。
+- **file**：`line` 为 1-based（从 1 开始）。`snippet` 用于文本包含匹配。
+
+---
+
+## 三、 MCP 工具 Schema
 
 | 工具名 | Input Schema | Output Schema |
 |---|---|---|
-| `tred_run_cst` | `{ file: string, allowNodejs?: boolean }` | `{ ok: boolean, output?: string, error?: string }` |
-| `tred_map` | `{ dir: string }` | `{ files: Record<string, { lines: number, outline: any[] }> }` |
-| `tred_grep` | `{ pattern: string, dir?: string, ast?: boolean }` | `{ text: string }` |
+| `tred_run_cst` | `{ file: string, allowNodejs?: boolean }` | `{ text: string }` (若 isError 为 true 则为错误文本) |
 | `tred_split` | `{ file, name, to, className? }` | `{ ok: boolean, message: string }` |
-| `tred_patch` | `{ file, diff, fuzzy?, autoHeal? }` | `{ ok: boolean, message?: string }` |
-| `tred_replace`| `{ file, content, anchor?, selector? }` | `{ status: "replaced"\|"skipped"\|"failed", message?: string }` |
-| `tred_impact` | `{ target: string, dir?: string }`| `{ text: string }` |
+| `tred_patch` | `{ file, diff, fuzzy?, autoHeal? }` | `{ ok: boolean, message: string }` |
+| `tred_map` | `{ dir: string }` | `{ files: Record<string, any> }` |
+| `tred_grep` | `{ pattern, dir?, ast? }` | `{ text: string }` |
 
-- **allowNodejs 读取时机**：MCP Server 会在每次调用 `tred_run_cst` 时，实时读取当前工作目录的 `.tred/config.json`。
-- **config 与 CLI 优先级**：若同时存在 `--allow-nodejs` 与 `config.allowNodejs: false`，以 CLI 参数为准（true）。
+---
 
-## 四、 事务与原子性边界
-- **单文件写入**：均为 `tmp + rename`，绝对原子。
-- **多文件事务**：`tred run` 内的多个操作**不保证全局回滚**。
-- **语法门禁**：若语法校验失败，当前指令回滚。
+## 四、 错误码与退出码
 
-## 五、 错误码与退出码
-- `ERR_UNEXPORTED_DEP`：同文件依赖未导出。
-- `ERR_AMBIGUOUS_MATCH`：多候选并列。
-- `ERR_SYNTAX_FAIL`：语法破坏。
+CLI 统一在出错时返回 Exit Code `1`。若使用 `--json`，引擎会输出如下结构化错误对象：
+
+    {
+      "status": "error",
+      "error": "ERR_XXX",
+      "message": "人类可读的报错信息"
+    }
+
+- `ERR_UNEXPORTED_DEP`：拆分时依赖了同文件未导出的顶层标识符。请将依赖一起加入 `--name`。
+- `ERR_AMBIGUOUS_MATCH`：多候选并列，差距 < `fuzzyMinMargin`。可使用 `--force` 或 `occurrence`。
+- `ERR_SYNTAX_FAIL`：修改后代码语法校验破坏。
 - `ERR_NODEJS_DISABLED`：检测到 `/#nodejs` 但未授权。
+- `ERR_FILE_NOT_FOUND`：路径不存在。
+- `ERR_SELECTOR_NOT_FOUND`：AST 定位不到节点。
 
-## 六、 .tred/config.json 配置文件
-```json
-{
-  "allowNodejs": false,        // 是否允许 .cst 执行原生 Node 代码
-  "fuzzyThreshold": 0.9,       // 默认模糊匹配阈值
-  "fuzzyMinMargin": 0.05,      // 多候选仲裁的最小分差
-  "exclude": ["**/*.test.ts"]  // 忽略的文件 (使用 minimatch 语法)
-}
-```
+---
+
+## 五、 配置文件 `.tred/config.json`
+
+    {
+      "allowNodejs": false,        
+      "fuzzyThreshold": 0.9,       
+      "fuzzyMinMargin": 0.05,      
+      "exclude": ["**/*.test.ts"]  
+    }
+
+- **allowNodejs**：是否永久允许 `.cst` 执行 Node 代码。
+- **fuzzyThreshold**：模糊匹配的最低阈值（0~1）。
+- **fuzzyMinMargin**：多候选仲裁的最小分差，`0.05` 表示如果 top1 和 top2 差距不到 5%，直接拒绝。
+- **exclude**：忽略的文件列表，使用 minimatch 语法（如 `**/*.test.ts`）。

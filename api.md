@@ -1,65 +1,63 @@
-# tred CLI & API Reference (v3.8.5)
+# tred CLI & API Reference (v4.0.0)
 
-## 一、 CLI 完整手册
+本手册提供 `tred` 所有 CLI 命令、环境配置及 TypeScript 接口的完整技术说明。
 
-### 核心执行
-- `tred run <file.cst> [--allow-nodejs] [--dry-run]`：执行 CST 脚本。
-- `tred replace --file <path> (--anchor | --selector <json>) (--content <str> | --content-file <path> | --content-stdin) [--fuzzy] [--auto-inject] [--dry-run]`：精准替换。
-- `tred split --file <path> --name <a,b> --to <new.ts> [--class <ClassName>]`：全薄壳拆分。
-- `tred patch --file <path> [diff-file] [--fuzzy] [--explain] [--force]`：智能打补丁。
+## 一、 CLI 命令手册
 
-### 分析与搜索
-- `tred map [--dir <path>]`：JSON 树状大纲。
-- `tred impact <name> [--dir <path>]`：依赖影响分析。
-- `tred grep <pattern> [--dir <path>] [--ast]`：语义搜索。
-- `tred ast --file <path>`：打印 AST 树。
-- `tred verify [--dir <path>] [--strict]`：检查锚点与代码健康度。
+### 1. 核心执行
+- `tred run <file.cst>`：执行 CST 宏脚本。
+  - 可选参数：`--allow-nodejs`（放行 Node 执行）、`--dry-run`（仅输出变更，不写盘）。
+- `tred chop --file <path> --dir <out-dir>`：执行 CodeChopper 图聚类拆分。将巨型文件拆分为多个 chunk。
+- `tred split --file <path> --name <a,b> --to <new.ts>`：全薄壳 AST 定向拆分。
+  - 可选参数：`--class <ClassName>`（当同文件有多个类含同名方法时必须指定）。
+- `tred patch --file <path> [diff-file]`：应用 unified diff。
+  - 可选参数：`--fuzzy`（开启模糊匹配）、`--explain`（输出打分详情）、`--force`（忽略并列仲裁）。
+- `tred replace --file <path> (--anchor | --selector)`：精准替换。
+  - 替换内容：`--content <str>` 或 `--content-file <path>` 或 `--content-stdin`。
+  - 可选参数：`--dry-run`（不写盘）。
 
-### 工程化工具
-- `tred init [--with-hook]`：生成 `.tred/config.json`。
-- `tred annotate [--dir] [--apply]`：自动注入锚点。
-- `tred strip [--dir]`：移除锚点。
-- `tred doctor`：环境诊断。
+### 2. 分析与搜索
+- `tred map [--dir <path>]`：输出 JSON 格式的 AST 结构树。
+- `tred impact <name> [--dir <path>]`：分析特定符号（函数/变量/类）的依赖影响面。
+- `tred grep <pattern> [--ast]`：全项目搜索，加 `--ast` 会标注上下文（如所属函数）。
+- `tred ast --file <path>`：打印单个文件的 AST 树。
+
+### 3. 工程化管理
+- `tred init`：生成 `.tred/config.json` 配置。
+- `tred verify`：检查锚点健康度与循环依赖。
 - `tred mcp`：启动 MCP Server。
 
-## 二、 TypeScript / JavaScript API
+---
+
+## 二、 TypeScript API
 
 ### `runCst(filePath: string, options?: { allowNodejs?: boolean })`
 执行 CST 脚本。
+- 若 `.cst` 中包含 `/#nodejs` 且 `allowNodejs` 为 `false`（且配置文件未放行），直接抛出异常中断。
 
 ### `splitFile(file: string, targets: string[], to: string, className?: string)`
-返回 `{ ok: boolean, message: string }`。若中途产生新文件但原文件语法报错，会清理新文件并返回 `ok: false`。
+执行定向拆分。
+- 返回值：`{ ok: boolean, message: string }`。
+- 特点：自动降级私有成员、自动补齐跨文件依赖。
 
-### `applyPatch(file: string, patchText: string, options?: PatchOptions)`
-```typescript
-interface PatchOptions {
-  fuzzy?: boolean;
-  fuzzyThreshold?: number; // 默认 0.9
-  minRareTokens?: number; // 默认 2
-  fuzzyMinMargin?: number; // 默认 0.05
-  force?: boolean;
-  autoHeal?: boolean;
-}
-```
+### `applyPatch(file: string, patchText: string, options: PatchOptions): Promise<PatchResult>`
+执行补丁匹配。
+
+    interface PatchOptions {
+      fuzzy?: boolean;
+      fuzzyThreshold?: number; // 默认 0.9
+      fuzzyMinMargin?: number; // 默认 0.05
+      autoHeal?: boolean;      // 自动修正上下文偏差
+      force?: boolean;         // 忽略多候选并列警告
+    }
+
+### `chopFile(filePath: string, outDir: string)`
+执行 CodeChopper。
+- 返回值：`{ ok: boolean, message: string }`。
+- 特点：自动提取枢纽变量、自动重构相对路径、自动生成入口引导器。
 
 ### `generateMap(dir: string): CodeMap`
-生成全息代码树状图。
+生成全息大纲 JSON 对象。
 
 ### `analyzeImpact(dir: string, target: string): string`
-返回格式化的人类可读报告。
-
-### `replace(options: ReplaceOptions): Promise<ReplaceResult>`
-```typescript
-interface ReplaceOptions {
-  file: string;
-  content: string;
-  astSelector?: AstSelector;
-  anchor?: string;
-  dryRun?: boolean;
-}
-interface ReplaceResult {
-  status: "replaced" | "skipped" | "failed";
-  message?: string;
-  syntaxErrors?: string[];
-}
-```
+返回格式化的人类可读影响报告。

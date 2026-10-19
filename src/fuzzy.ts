@@ -1,88 +1,95 @@
-const WASM_BASE64 = 'AGFzbQEAAAABDAJgAABgBH9/f38BfQMDAgABBQMBAAIGRgt/AUGAiAQLfwBBgAgLfwBBgAgLfwBBgAgLfwBBgIgEC38AQYAIC38AQYCIBAt/AEGAgAgLfwBBAAt/AEEBC38AQYCABAsH0QENBm1lbW9yeQIAEV9fd2FzbV9jYWxsX2N0b3JzAAAVZ2V0X3NpbWlsYXJpdHlfaGFzaGVzAAEMX19kc29faGFuZGxlAwEKX19kYXRhX2VuZAMCC19fc3RhY2tfbG93AwMMX19zdGFja19oaWdoAwQNX19nbG9iYWxfYmFzZQMFC19faGVhcF9iYXNlAwYKX19oZWFwX2VuZAMHDV9fbWVtb3J5X2Jhc2UDCAxfX3RhYmxlX2Jhc2UDCRVfX3dhc21fZmlyc3RfcGFnZV9lbmQDCgraAgICAAvUAgIBfQl/QwAAAAAhBAJAIAFFDQAgA0UNAEMAAAAAIQQCQCABQQFIDQAgA0EBSA0AIAFBAXEhBQJAAkAgAUEBRw0AQQAhBkEAIQcMAQsgAEEEaiEIIAFB/v///wdxIQlBACEGQQAhBwNAIAAgBkECdCIKaigCACELIAIhDCADIQ0CQAJAA0AgCyAMKAIARg0BIAxBBGohDCANQX9qIg1FDQIMAAsLIAdBAWohBwsgCCAKaigCACELIAIhDCADIQ0CQAJAA0AgCyAMKAIARg0BIAxBBGohDCANQX9qIg0NAAwCCwsgB0EBaiEHCyAGQQJqIgYgCUcNAAsLAkAgBUUNACAAIAZBAnRqKAIAIQ0gAyEMAkADQCANIAIoAgBGDQEgAkEEaiECIAxBf2oiDA0ADAILCyAHQQFqIQcLIAeyIgQgBJIhBAsgBCADIAFqspUhBAsgBAsAUwRuYW1lAAsKZnV6enkud2FzbQErAgARX193YXNtX2NhbGxfY3RvcnMBFWdldF9zaW1pbGFyaXR5X2hhc2hlcwcSAQAPX19zdGFja19wb2ludGVyACYJcHJvZHVjZXJzAQxwcm9jZXNzZWQtYnkBBWNsYW5nBjIxLjEuOACUAQ90YXJnZXRfZmVhdHVyZXMIKwtidWxrLW1lbW9yeSsPYnVsay1tZW1vcnktb3B0KxZjYWxsLWluZGlyZWN0LW92ZXJsb25nKwptdWx0aXZhbHVlKw9tdXRhYmxlLWdsb2JhbHMrE25vbnRyYXBwaW5nLWZwdG9pbnQrD3JlZmVyZW5jZS10eXBlcysIc2lnbi1leHQ=';
+// Jaro-Winkler 算法 (专门对付前缀相同的标识符，如 updateStatus vs update_state)
+function jaroWinkler(a: string, b: string): number {
+  if (a === b) return 1;
+  if (!a || !b) return 0;
+  
+  const matchWindow = Math.floor(Math.max(a.length, b.length) / 2) - 1;
+  const aMatches = new Array(a.length).fill(false);
+  const bMatches = new Array(b.length).fill(false);
+  let matches = 0;
 
-let wasmInstance: any = null;
-let memory: WebAssembly.Memory | null = null;
+  for (let i = 0; i < a.length; i++) {
+    const start = Math.max(0, i - matchWindow);
+    const end = Math.min(i + matchWindow + 1, b.length);
+    for (let j = start; j < end; j++) {
+      if (bMatches[j]) continue;
+      if (a[i] === b[j]) {
+        aMatches[i] = true;
+        bMatches[j] = true;
+        matches++;
+        break;
+      }
+    }
+  }
+  if (matches === 0) return 0;
+  
+  let t = 0;
+  let k = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (aMatches[i]) {
+      while (!bMatches[k]) k++;
+      if (a[i] !== b[k]) t++;
+      k++;
+    }
+  }
+  t /= 2;
 
-if (WASM_BASE64) {
-  try {
-    const buf = Buffer.from(WASM_BASE64, 'base64');
-    const mod = new WebAssembly.Module(buf);
-    wasmInstance = new WebAssembly.Instance(mod, {});
-    memory = wasmInstance!.exports.memory;
-  } catch (e) {}
+  const jaro = (matches / a.length + matches / b.length + (matches - t) / matches) / 3;
+  
+  // Winkler 前缀加成 (对前 4 个字符敏感)
+  let prefix = 0;
+  for (let i = 0; i < Math.min(4, a.length, b.length); i++) {
+    if (a[i] === b[i]) prefix++;
+    else break;
+  }
+  return jaro + prefix * 0.1 * (1 - jaro);
 }
 
-// 真正的零分配，直接比对 charCode
+// 编辑距离归一化
+function levenshteinRatio(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n === 0 ? 1 : 0;
+  if (n === 0) return 0;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+  return 1 - dp[m][n] / Math.max(m, n);
+}
+
+// 拆分标识符 (camelCase / snake_case)
+function splitIdentifier(s: string): string[] {
+  return s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[\s_\-]+/).map(x => x.toLowerCase()).filter(Boolean);
+}
+
+// 词集 Jaccard
+function jaccard(a: string[], b: string[]): number {
+  const setA = new Set(a), setB = new Set(b);
+  let inter = 0;
+  for (const x of setA) if (setB.has(x)) inter++;
+  const union = setA.size + setB.size - inter;
+  return union === 0 ? 1 : inter / union;
+}
+
 export function getSimilarity(query: string, target: string): number {
   if (!query || !target) return 0;
-
-  const qLen = query.length;
-  const tLen = target.length;
-
-  // ── 1. 短文本极致加速（零内存分配） ──
-  if (qLen < 100 && tLen < 100) {
-    const qParts: { s: number, e: number }[] = [];
-    let qStart = 0;
-    for (let i = 0; i <= qLen; i++) {
-      const c = i < qLen ? query.charCodeAt(i) : -1;
-      if (c === -1 || c === 32 || c === 45 || c === 95 || (c >= 65 && c <= 90 && i > qStart)) {
-        if (i > qStart) qParts.push({ s: qStart, e: i });
-        qStart = i;
-      }
-    }
-
-    let intersection = 0;
-    let tStart = 0;
-    let tCount = 0;
-    for (let i = 0; i <= tLen; i++) {
-      const c = i < tLen ? target.charCodeAt(i) : -1;
-      if (c === -1 || c === 32 || c === 45 || c === 95 || (c >= 65 && c <= 90 && i > tStart)) {
-        if (i > tStart) {
-          const tWordLen = i - tStart;
-          tCount++;
-          // 在 qParts 里寻找相等的词
-          for (let j = 0; j < qParts.length; j++) {
-            const qp = qParts[j];
-            if (qp.e - qp.s === tWordLen) {
-              let match = true;
-              for (let k = 0; k < tWordLen; k++) {
-                let qc = query.charCodeAt(qp.s + k);
-                let tc = target.charCodeAt(tStart + k);
-                if (qc >= 65 && qc <= 90) qc += 32;
-                if (tc >= 65 && tc <= 90) tc += 32;
-                if (qc !== tc) { match = false; break; }
-              }
-              if (match) { intersection++; break; }
-            }
-          }
-        }
-        tStart = i;
-      }
-    }
-
-    // 子串完全包含，直接给高分
-    const qLower = query.toLowerCase();
-    const tLower = target.toLowerCase();
-    if (qLower.includes(tLower) || tLower.includes(qLower)) return 0.9;
-
-    if (qParts.length === 0 || tCount === 0) return 0;
-    return (2 * intersection) / (qParts.length + tCount);
-  }
-
-  // ── 2. 超大字符串走 WASM ──
-  if (wasmInstance && memory && qLen >= 100) {
-    try {
-      const qBytes = Buffer.from(query);
-      const tBytes = Buffer.from(target);
-      const total = qBytes.length + tBytes.length;
-      if (memory.buffer.byteLength < total + 1024) {
-        memory.grow(Math.ceil((total + 1024 - memory.buffer.byteLength) / 65536));
-      }
-      const mem = new Uint8Array(memory.buffer);
-      mem.set(qBytes, 1024);
-      mem.set(tBytes, 1024 + qBytes.length);
-      return wasmInstance.exports.get_similarity(1024, qBytes.length, 1024 + qBytes.length, tBytes.length);
-    } catch (e) {}
-  }
-  return 0;
+  if (query === target) return 1;
+  
+  const qWords = splitIdentifier(query);
+  const tWords = splitIdentifier(target);
+  
+  const jw = jaroWinkler(query.toLowerCase(), target.toLowerCase());
+  const lev = levenshteinRatio(query.toLowerCase(), target.toLowerCase());
+  const jac = jaccard(qWords, tWords);
+  
+  // 标识符级融合：前缀敏感 + 字符纠错 + 词干分解
+  return jw * 0.5 + lev * 0.3 + jac * 0.2;
 }
