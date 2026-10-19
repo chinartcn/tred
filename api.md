@@ -30,7 +30,11 @@
 ---
 
 ## 二、 TypeScript API
-### `calcHybridSimilarity(codeA: string, codeB: string): HybridScoreDetail`
+### `calcHybridSimilarity(codeA: string, codeB: string, options?: { mode?: 'code' | 'text' }): HybridScoreDetail`
+
+支持代码与纯文本双模匹配。
+- 默认 `mode: 'code'`：开启 AST 结构保底。
+- 若指定 `mode: 'text'`：放弃 AST 解析，使用 LCS 字符覆盖 + 2-gram Jaccard，对纯文本查重（如子集包含、大段引用）极为精准。
 计算两段代码文本的结构与语义相似度（0~1）。
 包含 AST 结构保底机制：如果语法骨架高度一致，即使变量名全部被修改，也能获得极高的评分。
 - 返回值：
