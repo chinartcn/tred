@@ -1,5 +1,63 @@
 # Changelog
 
+## [3.6.6] - 2026-10-19
+
+### Fixed
+
+- split: P1-4 未定义标识符只报大写标识符，避免局部小写变量（i / e / container）噪音
+- 修复 dist 重新 build 后 P1_4_uppercase_filter 标记缺失
+
+## [3.6.5] - 2026-10-19
+
+### Added
+
+- split: P0-2 全薄壳模式（废弃 Object.assign mixin）
+  - public / protected / private 方法统一走薄壳 + Impl 后缀
+  - 保留修饰符 / async / generator / 参数签名
+- split: P0-1 import 自动复制（含 import type 语义，verbatimModuleSyntax 兼容）
+  - collectFreeIdentifiers 分析 impl 自由标识符（含参数类型 / 返回类型 / 类型参数 / 默认值）
+- split: P1-3 private 方法交叉检测（未拆时阻断，避免运行时 this.private undefined）
+- split: P1-4 未定义标识符警告
+- split: `--to` 支持完整相对路径
+
+## [3.6.4] - 2026-10-19
+
+### Added
+
+- patch: P0-2 多候选仲裁（top1/top2 margin < 5% 拒绝）
+- patch: `--force` / `--fuzzy-min-margin`
+- patch: `--explain` 结构化分数分解（charSim / tokenSim / keyLines / positionOffset）
+- patch: P1 稀有词行全命中提升到 93%
+- patch: P1 token 集相同给高分
+
+### Fixed
+
+- patch: 修复 patch 文本末尾 \n 产生假空行，拉低模糊匹配得分
+
+### Chore
+
+- pnpm 12 allowBuilds 配置（esbuild）
+
+## [3.6.3] - 2026-10-19
+
+### Added
+
+- split: 无 `--class` 时自动识别类方法（单类命中 / 多类冲突 / 不存在列可用节点）
+- split: 后置统一检查拒绝 static / private / protected 方法
+- skill.md: 第 10 节补 `--auto-heal` / `--html` / split 边界
+- ci: `.github/workflows/test.yml`（Node 20/22 + smoke，Ubuntu + macOS）
+
+### Fixed
+
+- split: PropertyDeclaration 用 `getFullStart()` 保留 JSDoc
+- split: async / generator 语义保留（`function*` 位置修正）
+- split: 删除未使用的 prefix 死代码
+- patch: `approxIdx` clamp 上下界
+
+### Test
+
+- smoke 覆盖 11 条关键路径
+
 ## [3.6.2] - 2026-10-18
 ### Fixed
 - `tred split` 提取类属性（箭头函数）时，完美保留前置 JSDoc 注释，原文件不再残留孤儿注释。
