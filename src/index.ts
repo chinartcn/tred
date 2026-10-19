@@ -143,7 +143,7 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
     status = 'replaced';
   } else if (opts.anchor) {
     const allAnchors = findAllAnchors(original, opts.anchor, opts.fuzzy);
-    if (allAnchors.length > 1) return { nextSource: null, status: 'failed', message: '锚点名出现多次' };
+    if (allAnchors.length > 1) return { nextSource: null, status: 'failed', message: '锚点名出现 ' + allAnchors.length + ' 次' };
     const block = allAnchors[0];
     if (block) {
       if (block.fp === fingerprint) return { nextSource: null, status: 'skipped', message: '指纹一致，跳过' };

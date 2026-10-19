@@ -64,6 +64,21 @@ tred replace --file main.ts \
 ### 声明式流水线 (`tred ops`)
 自带 Schema 校验，字段错直接大白话报错。
 
+### 🚀 进阶杀手锏：AST 自动拆分 (v3.6.7+)
+
+不再需要复杂的正则和 AST 手写脚本，直接把大文件甩给它：
+```bash
+# 自动识别类方法、全薄壳拆分、自动补齐 import
+tred split --file src/core/engine.ts \
+  --name renderNode,renderAllEdges \
+  --to src/core/engine-render.ts
+```
+**特性：**
+- **免传 --class**：自动推导成员所属类，多类冲突会自动提示。
+- **全薄壳模式 (P0)**：拆分后原类保留方法签名（无 `Object.assign` 原型注入），TS 类型检查 0 报错。
+- **Import 自动补齐**：智能分析被拆方法的依赖，自动把 `import type` / 运行时依赖复制到新文件。
+- **P1-3 安全门禁**：若被拆方法调用了未拆的 private 方法，直接拒绝，防止运行时崩溃。
+
 ## 🤖 AI 原生工作流 (v3.2.0)
 
 如果你在使用 Cursor、Claude 或其它 AI 编程助手，请让 AI 阅读根目录的 **`skill.md`**。

@@ -53,6 +53,9 @@ tred patch --file <path> <diff-file> [options]
 
 **高级参数：**
 - `--fuzzy`：开启模糊匹配（默认关闭，安全第一）
+- `--explain`：输出模糊匹配的分数分解（charSim, tokenSim, 候选数）
+- `--force`：忽略多候选并列警告和阈值限制，强制应用 top1
+- `--fuzzy-min-margin <n>`：多候选仲裁的最小分差，默认 0.05
 - `--fuzzy-threshold <n>`：TF-IDF 加权相似度阈值，默认 0.9
 - `--fuzzy-min-rare <n>`：最少稀有词要求，默认 2
 - **`--auto-heal`**：当相似度极高（>阈值-0.15）但因为有细微改动未命中时，自动将补丁上下文替换为真实文件内容并应用。
@@ -66,17 +69,19 @@ tred impact <targetName> [--dir <path>]
 ```
 分析目标符号被引用的次数与具体位置（包含所在的函数/类）。
 
-### 6. `tred split` 自动拆分
+### 6. `tred split` 自动拆分 (v3.6.7+)
 ```bash
-# 提取顶层函数
-tred split --file <path> --name <func1,func2> --to <new.ts>
+# 提取顶层函数或类方法（推荐：无需指定 --class）
+tred split --file <path> --name <func1,method1> --to <new.ts>
 
-# 提取类方法（自动处理 this 上下文）
+# 显式指定类名（多类冲突时必填）
 tred split --file <path> --class <ClassName> --name <method1,method2> --to <new.ts>
 ```
-- **顶层函数拆分**：自动移动函数定义，并维护原文件的 export。
-- **类方法拆分**：将方法转为带 `this` 参数的独立函数，并自动追加 `Object.assign(ClassName.prototype, { ... })` 混入，零破坏原对象架构。
-- 自动执行 Dedent 与空行清理。
+- **免 --class 自动识别**：查找全文件，若只有一个类包含目标方法，自动推导类名。
+- **P0 级全薄壳模式**：拆分出的方法转为 `function xxxImpl(this: TargetClass)`，原类保留 `public/private xxx() { return xxxImpl.call(this); }` 薄壳。**废弃了 Object.assign 原型注入**，TS 类型推导 100% 通过。
+- **Import 自动复制**：分析被拆代码的自由标识符，自动复制必要的 `import` / `import type`。
+- **P1-3 私有依赖阻断**：若实现体中使用了未拆分的私有方法，直接报错，防止运行时 `this.privateMethod is undefined`。
+- 自动执行 Dedent（公共前缀，Tab/Space 混合安全）与空行清理。
 
 ### 7. 其他高频命令简表
 

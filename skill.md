@@ -60,11 +60,17 @@ tred impact ITEMS --dir src
 ```
 如果输出报告显示被 10 个文件引用，务必检查这些文件。
 
-## 6. 拆分巨型文件
-如果文件超过 1000 行，需要将部分函数拆分出去，使用：
+## 6. 拆分巨型文件 (v3.6.7+)
+如果文件超过 1000 行，需要将部分函数/方法拆分出去，使用：
 ```bash
+# 不用写 --class，自动识别类方法
 tred split --file giant.ts --name foo,bar --to util.ts
 ```
+**AI 必读特性**：
+1. **免 --class**：自动推导成员所属类。若多个类包含同名方法，它会报错要求指定 `--class`。
+2. **全薄壳模式**：拆分出的方法在原类中保留签名（如 `public foo() { return fooImpl.call(this); }`），**没有原型注入**，对 TS 类型系统完全透明。
+3. **Import 自动复制**：被拆方法用到的模块引用会被自动复制到新文件。
+4. **私有方法阻断 (P1-3)**：若被拆方法的实现体里调用了**未被一起拆分**的 `private/protected` 方法，会直接报错。此时你需要把那个被依赖的私有方法也加进 `--name` 列表。
 
 ## 7. tred patch 打不上怎么办？
 如果 `tred patch` 报"未找到匹配位置"，说明：
@@ -87,6 +93,11 @@ tred patch --file a.ts diff.patch --fuzzy --fuzzy-min-rare 1
 
 ## 8. 遇到打不上补丁怎么办？
 如果你的 diff 匹配分数不够（如 88%），`tred` 会提示你。你可以复制它给出的 `--fuzzy-threshold` 命令直接重试。
+
+### 多候选仲裁 (v3.6.4+)
+如果 diff 同时匹配到多个相似位置（比如三个 `render*` 方法），且得分差距 < 5%，`tred` 会**拒绝应用**以防误伤。
+- 查看详细打分：`tred patch ... --fuzzy --explain`
+- 如果确认打第一个：`tred patch ... --fuzzy --force`
 
 ## 9. 补丁自愈与可视化
 如果你的 diff 因为文件被格式化过而打不上，可以：
