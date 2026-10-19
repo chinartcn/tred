@@ -8,7 +8,12 @@ import { applyPatch } from './patch.js';
 import { replace } from './index.js';
 import { analyzeImpact } from './impact.js';
 
-// 拦截 console.log，防止输出污染 JSON-RPC 协议流
+// 🛡️ 全局劫持 console.log，彻底防止底层工具污染 JSON-RPC 的 stdout
+console.log = (...args: any[]) => {
+  console.error(...args);
+};
+
+// 捕获函数执行期间的 console.log (仅用于 tred_grep 这种直接打印的控制台输出)
 function captureConsoleLog(fn: () => any): string {
   const originalLog = console.log;
   const logs: string[] = [];
@@ -16,8 +21,10 @@ function captureConsoleLog(fn: () => any): string {
     logs.push(args.map(a => typeof a === 'string' ? a : JSON.stringify(a, null, 2)).join(' '));
   };
   try {
-    const result = fn();
-    return typeof result === 'string' ? result : logs.join('\n');
+    fn();
+    return logs.join('\n');
+  } catch (e) {
+    return `❌ 执行出错: ${e instanceof Error ? e.message : String(e)}`;
   } finally {
     console.log = originalLog;
   }
@@ -25,7 +32,7 @@ function captureConsoleLog(fn: () => any): string {
 
 const server = new McpServer({
   name: "tred-mcp",
-  version: "3.7.0",
+  version: "3.7.7",
 });
 
 server.tool(
@@ -33,8 +40,12 @@ server.tool(
   "生成代码库的 JSON 树状大纲结构，了解项目架构",
   { dir: z.string().describe("目标目录，默认 .") },
   async ({ dir }) => {
-    const map = generateMap(dir || '.');
-    return { content: [{ type: "text", text: JSON.stringify(map, null, 2) }] };
+    try {
+      const map = generateMap(dir || '.');
+      return { content: [{ type: "text", text: JSON.stringify(map, null, 2) }] };
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: `❌ map 失败: ${e instanceof Error ? e.message : String(e)}` }] };
+    }
   }
 );
 
@@ -50,6 +61,9 @@ server.tool(
     const result = captureConsoleLog(() => {
       grepDir(dir || '.', pattern, ast || false, false);
     });
+    if (result.startsWith('❌')) {
+      return { isError: true, content: [{ type: "text", text: result }] };
+    }
     return { content: [{ type: "text", text: result || "无匹配结果" }] };
   }
 );
@@ -64,11 +78,16 @@ server.tool(
     className: z.string().optional().describe("所属类名（多类冲突时必填）")
   },
   async ({ file, name, to, className }) => {
-    const targets = name.split(',').map(s => s.trim());
-    const res = splitFile(file, targets, to, className);
-    return { 
-      content: [{ type: "text", text: res.ok ? `✅ ${res.message}` : `❌ ${res.message}` }] 
-    };
+    try {
+      const targets = name.split(',').map(s => s.trim());
+      const res = splitFile(file, targets, to, className);
+      return { 
+        isError: !res.ok,
+        content: [{ type: "text", text: res.ok ? `✅ ${res.message}` : `❌ ${res.message}` }] 
+      };
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: `❌ split 异常: ${e instanceof Error ? e.message : String(e)}` }] };
+    }
   }
 );
 
@@ -82,13 +101,18 @@ server.tool(
     autoHeal: z.boolean().optional().describe("是否启用自动自愈")
   },
   async ({ file, diff, fuzzy, autoHeal }) => {
-    const res = applyPatch(file, diff, { fuzzy: fuzzy || false, autoHeal: autoHeal || false });
-    return { 
-      content: [{ 
-        type: "text", 
-        text: res.ok ? `✅ Patch 应用成功: ${file}` : `❌ Patch 失败: ${res.message}` 
-      }] 
-    };
+    try {
+      const res = applyPatch(file, diff, { fuzzy: fuzzy || false, autoHeal: autoHeal || false });
+      return { 
+        isError: !res.ok,
+        content: [{ 
+          type: "text", 
+          text: res.ok ? `✅ Patch 应用成功: ${file}` : `❌ Patch 失败: ${res.message}` 
+        }] 
+      };
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: `❌ patch 异常: ${e instanceof Error ? e.message : String(e)}` }] };
+    }
   }
 );
 
@@ -102,21 +126,27 @@ server.tool(
     selector: z.string().optional().describe("JSON 格式的 AST 选择器")
   },
   async ({ file, content, anchor, selector }) => {
-    let astSelector = undefined;
-    if (selector) {
-      try { astSelector = JSON.parse(selector); } catch {}
+    try {
+      let astSelector = undefined;
+      if (selector) {
+        try { astSelector = JSON.parse(selector); } 
+        catch { return { isError: true, content: [{ type: "text", text: "❌ selector 解析失败：必须是合法 JSON" }] }; }
+      }
+      const r = await replace({
+        file,
+        anchor: anchor || '',
+        content,
+        fingerprint: '',
+        astSelector,
+        autoInjectAnchor: !!anchor
+      });
+      return { 
+        isError: r.status === 'failed',
+        content: [{ type: "text", text: `[tred replace] ${r.status.toUpperCase()} ${file}\n${r.message || ''}` }] 
+      };
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: `❌ replace 异常: ${e instanceof Error ? e.message : String(e)}` }] };
     }
-    const r = await replace({
-      file,
-      anchor: anchor || '',
-      content,
-      fingerprint: '',
-      astSelector,
-      autoInjectAnchor: !!anchor
-    });
-    return { 
-      content: [{ type: "text", text: `[tred replace] ${r.status.toUpperCase()} ${file}\n${r.message || ''}` }] 
-    };
   }
 );
 
@@ -128,8 +158,12 @@ server.tool(
     dir: z.string().optional().describe("目标目录")
   },
   async ({ target, dir }) => {
-    const res = analyzeImpact(dir || '.', target);
-    return { content: [{ type: "text", text: res }] };
+    try {
+      const res = analyzeImpact(dir || '.', target);
+      return { content: [{ type: "text", text: res }] };
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: `❌ impact 异常: ${e instanceof Error ? e.message : String(e)}` }] };
+    }
   }
 );
 
