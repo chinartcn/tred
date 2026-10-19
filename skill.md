@@ -106,17 +106,7 @@ tred patch --file a.ts diff.patch --fuzzy --fuzzy-min-rare 1
 1. 使用 `--auto-heal` 让引擎自动修正上下文并打入。
 2. 使用 `--html` 生成浏览器视图，自己肉眼 review 后再调低阈值重试。
 
-## 10. 补丁自愈与可视化（v3.5.0+）
-
-### 10.1 `--auto-heal`：文件被格式化后的补丁
-
-**场景**：文件被 Prettier / ESLint 跑过，`-` 行里的空格、引号、分号已变，但结构没变。
-
-```bash
-cat diff.patch | tred patch --file a.ts --fuzzy --auto-heal
-'EOF'
-
-## 10. 补丁自愈与可视化（v3.5.0+）
+## 10. 补丁自愈、可视化与 split 边界 (v3.7.4)
 
 ### 10.1 `--auto-heal`：文件被格式化后的补丁
 
@@ -127,48 +117,35 @@ cat diff.patch | tred patch --file a.ts --fuzzy --auto-heal
 ```
 
 引擎会：
-
 1. 走 4 级匹配：精确 → ±50 行精确 → ±50 行忽略空白 → 模糊
-2. 模糊阶段相似度 ≥ 阈值 - 0.15 时，自动把补丁上下文替换为当前文件真实内容，只应用真正的 -/+ 行
+2. 模糊阶段相似度 ≥ 阈值-0.15 时，自动把补丁上下文替换为当前文件真实内容，只应用真正的 `-`/`+` 行
 3. 打完后走语法门禁，语法错回滚
 
-⚠️ Auto-Heal 会替换补丁里的上下文行。它不改变 -/+ 行本身，但若相似度只有 80% 左右，建议打完后 diff 备份确认插入位置。
+### 10.2 `--html`：Split Diff 可视化
 
-10.2 --html：Split Diff 可视化
-
-场景：--auto-heal 也打不上，或者你想肉眼 review 后再决定。
+**场景**：`--auto-heal` 也打不上，或你想肉眼 review 后再决定。
 
 ```bash
 cat diff.patch | tred patch --file a.ts --fuzzy --html
 ```
 
-失败时生成 tred-suggest.html，浏览器打开：
+失败时生成 `tred-suggest.html`：左栏当前代码、右栏补丁目标、顶部相似度。
 
-· 左栏：当前文件第 N 行附近的真实内容
-· 右栏：补丁想要应用的目标内容
-· 顶部：相似度百分比
+### 10.3 什么时候不要用 `--fuzzy`
 
-确认是对的目标后，按它给出的命令重试：
+- 文件里有 3 个以上结构几乎一样的方法（典型：React 组件的 3 个 `render*`）
+- 补丁里只有 `return x;` 这类常见行，无稀有标识符（引擎会自己拒绝）
+- CI 里跑 —— `--fuzzy` 只适合交互式修复，CI 应精确匹配失败即报错
+
+### 10.4 `tred split` 与私有成员的边界 (v3.7.4+)
+
+当拆分的方法内部访问了 `private` / `protected` 成员时：
+
+1. **私有字段/方法（已拆或未拆）**：引擎会自动在 AST 层将其降级替换为 `(this as any).buffer` 或 `(this as any).render()`，确保新文件能通过 TS 编译门禁。
+2. **未拆的私有方法**：如果拆出去的代码调用了**未被一起拆分**的私有方法，引擎会**直接报错阻断**（防止运行时 undefined）。此时，你需要把这个私有方法也加进 `--name` 列表。
+3. **拆完必跑 `tsc --noEmit --strict`**：这是所有 AI 重构后的硬性检查，引擎虽然做了 AST 降级，但 AI 仍应确认最终产物不污染项目。
 
 ```bash
-tred patch --file a.ts ... --fuzzy --fuzzy-threshold 0.85
+# 正确示例：将 public 方法和它依赖的 private 方法一起拆走
+tred split --file engine.ts --name renderNode,calculatePosition --to render.ts
 ```
-
-10.3 什么时候 不要 用 --fuzzy
-
-· 文件里有 3 个以上结构几乎一样的方法（典型：React 组件的 3 个 render*）
-· 补丁里只有 return x; 这类常见行，无稀有标识符（引擎会自己拒绝，别强闯）
-· CI 里跑 —— --fuzzy 只适合交互式修复，CI 应精确匹配失败即报错
-
-10.4 tred split 的边界
-
-tred split --class 用 this: Class 假参数 + Object.assign(Class.prototype, ...) mixin 保 this 上下文，有明确边界：
-
-支持 不支持（会报错拒绝）
-实例方法 foo() static foo() —— 挂 prototype 不是 static
-async foo() private / protected foo() —— mixin 丢失访问控制
-*gen() generator 箭头函数属性带泛型 / 复杂类型守卫（待验证）
-箭头函数属性 foo = () => {} —
-普通类型属性 value: number = 1 —
-
-被拒时 tred split 返回 { ok: false, message }，--json 模式可读。不要绕过，否则运行时才炸。

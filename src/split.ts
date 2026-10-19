@@ -224,16 +224,21 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   for (const n of extractedNodes) walkForThisAccesses(n);
 
   const warnings: string[] = [];
+  const privateMethods = new Set<string>();
+  const privateFields = new Set<string>();
+  const allPrivateMethods = new Set<string>();
+  const allPrivateFields = new Set<string>();
+
   if (classDecl) {
-    const privateMethods = new Set<string>();
-    const privateFields = new Set<string>();
     for (const member of classDecl.members) {
       const mods = ts.canHaveModifiers(member) ? (ts.getModifiers(member) ?? []) : [];
       const isPrivate = mods.some((m: ts.ModifierLike) => m.kind === ts.SyntaxKind.PrivateKeyword || m.kind === ts.SyntaxKind.ProtectedKeyword);
       if (!isPrivate) continue;
       if ((ts.isMethodDeclaration(member) || ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) && member.name && ts.isIdentifier(member.name)) {
+        allPrivateMethods.add(member.name.text);
         if (!extractedMethodNames.has(member.name.text)) privateMethods.add(member.name.text);
       } else if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+        allPrivateFields.add(member.name.text);
         if (!extractedMethodNames.has(member.name.text)) privateFields.add(member.name.text);
       }
     }
@@ -251,11 +256,6 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
       };
     }
 
-    for (const name of thisAccesses) {
-      if (privateFields.has(name)) {
-        warnings.push('impl 访问了 private 属性 this.' + name + '，TS 可能报 TS2341，请在 impl 里用 (this as any).' + name + ' 或加 @ts-expect-error');
-      }
-    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -482,6 +482,15 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
     }
 
     let text = original.slice(node.getFullStart(), node.getEnd()).trim();
+    
+    // 自动修复对 private 成员的访问限制（转为 (this as any).xxx）
+    for (const access of thisAccesses) {
+      if (allPrivateFields.has(access) || allPrivateMethods.has(access)) {
+        const re = new RegExp('\\bthis\\.' + access + '\\b', 'g');
+        text = text.replace(re, '(this as any).' + access);
+      }
+    }
+
     const comments = (() => {
       const m = text.match(/^(\/\*[\s\S]*?\*\/|\/\/[^\n]*\n)+/);
       return m ? m[0] : '';
