@@ -139,6 +139,99 @@ t('split private 拒绝', () => {
   rmSync(dir, { recursive: true });
 });
 
+// ── 12. P1 改进：稀有词行全命中提升总分
+t('P1 改进：稀有词行全命中提升到 93%', () => {
+  const dir = mk({
+    'a.ts': [
+      'import { other2 } from "./other2";',
+      'const specialUniqueTokenXYZ = 1;',
+      'import { other2 } from "./other2";',
+      '',
+    ].join('\n'),
+  });
+  const f = join(dir, 'a.ts');
+  const diff = [
+    '@@ -1,3 +1,3 @@',
+    '-import { other1 } from "./other1";',
+    '-const specialUniqueTokenXYZ = 1;',
+    '-import { other1 } from "./other1";',
+    '+import { changed1 } from "./changed1";',
+    '+const specialUniqueTokenXYZ = 99;',
+    '+import { changed1 } from "./changed1";',
+  ].join('\n');
+  const r = applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.9 });
+  assert.equal(r.ok, true, r.message);
+  assert.match(readFileSync(f, 'utf-8'), /specialUniqueTokenXYZ = 99/);
+  rmSync(dir, { recursive: true });
+});
+
+// ── 13. P1：token 集相同给 0.97
+t('P1：token 集相同给高分', () => {
+  const dir = mk({
+    'a.ts': 'const alpha = 1;\nconst beta = 2;\nconst gamma = 3;\n',
+  });
+  const f = join(dir, 'a.ts');
+  const diff = [
+    '@@ -1,3 +1,3 @@',
+    '-const alpha = 1 ;',
+    '-const beta = 2 ;',
+    '-const gamma = 3 ;',
+    '+const alpha = 10;',
+    '+const beta = 20;',
+    '+const gamma = 30;',
+  ].join('\n');
+  const r = applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.9 });
+  assert.equal(r.ok, true, r.message);
+  rmSync(dir, { recursive: true });
+});
+
+// ── 14. P0-2 多候选仲裁：拒绝 ──
+t('P0-2 多候选：并列时拒绝', () => {
+  const dir = mk({ 'a.ts': [
+    'function dupAlpha() {',
+    '  const appleCount = 1;',
+    '  const bananaCount = 2;',
+    '}',
+    '',
+    'function dupBravo() {',
+    '  const appleCount = 1;',
+    '  const bananaCount = 2;',
+    '}',
+    '',
+  ].join('\n') });
+  const f = join(dir, 'a.ts');
+  const before = readFileSync(f, 'utf-8');
+  // 值只差 1，结构完全一致 → 两处候选分数极近
+  const diff = '@@ -2,2 +2,2 @@\n-const appleCount = 100;\n-const bananaCount = 200;\n+const appleCount = 101;\n+const bananaCount = 201;\n';
+  const r = applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.8 });
+  assert.equal(r.ok, false, '应拒绝并列候选: ' + (r.message || ''));
+  assert.match(String(r.message), /多个近似候选|并列|ambig|margin/i, '错误信息应说明并列：' + r.message);
+  assert.equal(readFileSync(f, 'utf-8'), before, '不应修改文件');
+  rmSync(dir, { recursive: true });
+});
+
+// ── 15. P0-2 多候选仲裁：--force 强制接受 ──
+t('P0-2 多候选：--force 强制接受', () => {
+  const dir = mk({ 'a.ts': [
+    'function dupAlpha() {',
+    '  const appleCount = 1;',
+    '  const bananaCount = 2;',
+    '}',
+    '',
+    'function dupBravo() {',
+    '  const appleCount = 1;',
+    '  const bananaCount = 2;',
+    '}',
+    '',
+  ].join('\n') });
+  const f = join(dir, 'a.ts');
+  const diff = '@@ -2,2 +2,2 @@\n-const appleCount = 100;\n-const bananaCount = 200;\n+const appleCount = 101;\n+const bananaCount = 201;\n';
+  const r = applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.8, force: true });
+  assert.equal(r.ok, true, r.message);
+  assert.match(readFileSync(f, 'utf-8'), /appleCount = 101/);
+  rmSync(dir, { recursive: true });
+});
+
 process.stdout.write(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail > 0 ? 1 : 0);
 SMOKE_EOF

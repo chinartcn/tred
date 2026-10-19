@@ -194,7 +194,10 @@ async function cmdPatch(flagsRaw: Record<string, string | true | string[]>, posi
   const minRareTokens = typeof flags['fuzzy-min-rare'] === 'string' ? parseInt(flags['fuzzy-min-rare'], 10) : undefined;
   const autoHeal = Boolean(flags['auto-heal']);
   const html = Boolean(flags.html);
-  const res = applyPatch(file, patchText, { fuzzy, fuzzyThreshold, minRareTokens, autoHeal, html });
+  // P0_2_cli: 多候选仲裁参数
+  const fuzzyMinMargin = typeof flags['fuzzy-min-margin'] === 'string' ? parseFloat(flags['fuzzy-min-margin']) : undefined;
+  const force = Boolean(flags.force);
+  const res = applyPatch(file, patchText, { fuzzy, fuzzyThreshold, minRareTokens, autoHeal, html, fuzzyMinMargin, force });
 
   if (!res.ok) {
     console.error('❌ [tred patch] ' + res.message);

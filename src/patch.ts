@@ -76,11 +76,16 @@ function healNewBlock(oldBlock: string[], newBlock: string[], actualBlock: strin
 export function applyPatch(
   filePath: string,
   patchText: string,
-  options: { fuzzy?: boolean, fuzzyThreshold?: number, minRareTokens?: number, autoHeal?: boolean, html?: boolean } = {},
+  options: { fuzzy?: boolean, fuzzyThreshold?: number, minRareTokens?: number, autoHeal?: boolean, html?: boolean, fuzzyMinMargin?: number, force?: boolean } = {}, // P0_2_arbitration
 ): PatchResult {
   const original = readFileSync(filePath, 'utf-8').replace(/\r\n/g, '\n');
   const lines = original.split('\n');
-  const patchLines = patchText.replace(/\r\n/g, '\n').split('\n');
+  // 修复：patch 文本末尾的 \n 会产生假空行，必须去掉
+  const rawPatchLines = patchText.replace(/\r\n/g, '\n').split('\n');
+  if (rawPatchLines.length > 0 && rawPatchLines[rawPatchLines.length - 1] === '') {
+    rawPatchLines.pop();
+  }
+  const patchLines = rawPatchLines;
 
   const hunks: { oldStart: number, oldBlock: string[], newBlock: string[] }[] = [];
   let currentHunk: { oldStart: number, oldBlock: string[], newBlock: string[] } | null = null;
@@ -130,14 +135,34 @@ export function applyPatch(
     if (a === b) return 1;
     if (a.trim() === b.trim()) return 0.95;
     if (!a.trim() || !b.trim()) return 0;
+
     const charSim = getSimilarity(a, b);
     const ta = weightedTokenSet(a);
     const tb = weightedTokenSet(b);
-    if (ta.size === 0 || tb.size === 0) return charSim;
+
+    if (ta.size === 0 && tb.size === 0) return charSim;
+    if (ta.size === 0 || tb.size === 0) return charSim * 0.5;
+
+    // P1: token 集完全相同（仅顺序/空白/标点微差）→ 强信号
+    if (ta.size === tb.size) {
+      let same = true;
+      for (const t of ta.keys()) if (!tb.has(t)) { same = false; break; }
+      if (same) return Math.max(charSim, 0.97);
+    }
+
+    // P1: a 的所有稀有词都在 b 里 → 强信号
+    let rareTotal = 0, rareHit = 0;
+    for (const t of ta.keys()) {
+      const freq = globalFreq.get(t) || 0;
+      if (freq > 0 && freq <= 6) { rareTotal++; if (tb.has(t)) rareHit++; }
+    }
+    if (rareTotal > 0 && rareHit === rareTotal) return Math.max(charSim, 0.92);
+
     let intersection = 0, union = 0;
     for (const [t, w] of ta) { union += w; if (tb.has(t)) intersection += w; }
     for (const [t, w] of tb) if (!ta.has(t)) union += w;
-    return charSim * 0.4 + (union > 0 ? intersection / union : 0) * 0.6;
+    const tokenSim = union > 0 ? intersection / union : 0;
+    return charSim * 0.4 + tokenSim * 0.6;
   }
 
   const fuzzyEnabled = Boolean(options.fuzzy);
@@ -157,6 +182,16 @@ export function applyPatch(
     const rareTokens = new Set<string>();
     for (const line of oldBlock) {
       for (const t of extractTokens(line)) if ((globalFreq.get(t) || 1) <= 6) rareTokens.add(t);
+    }
+
+    // P1: 唯一 token（频率=1）用于判定"关键行"（必须完美命中）
+    // 避免 import/from 等通用词在小文件里被误判为稀有词行
+    const uniqueTokens = new Set<string>();
+    for (const line of oldBlock) {
+      // 只收文件里实际出现 1 次的 token（patch 独有 token 不进，避免 other1 这类被误判为关键）
+      for (const t of extractTokens(line)) {
+        if (globalFreq.get(t) === 1) uniqueTokens.add(t);
+      }
     }
 
     // 同时 clamp 上界，防止 oldStart 落在 [len - blockLen, len) 时越界
@@ -203,7 +238,8 @@ export function applyPatch(
       const isOutOfBounds = approxIdx + 100 > currentLines.length;
       const startSearch = isOutOfBounds ? 0 : Math.max(0, approxIdx - 100);
       const endSearch = isOutOfBounds ? currentLines.length - oldBlock.length : Math.min(currentLines.length - oldBlock.length, approxIdx + 100);
-      let best: { score: number, rareHits: number, idx: number } | null = null;
+      // P0_2_arbitration: 收集所有候选用于仲裁
+      const candidates: { score: number, rareHits: number, idx: number }[] = [];
 
       for (let i = startSearch; i <= endSearch; i++) {
         const windowTokenSet = new Set<string>();
@@ -216,18 +252,62 @@ export function applyPatch(
         if (rareHits < minRareTokens) continue;
 
         let totalScore = 0, totalWeight = 0;
+        let keyLineCount = 0, keyLineHitCount = 0; // P1_rare_line_boost
         for (let j = 0; j < oldBlock.length; j++) {
           const sim = weightedLineSimilarity(currentLines[i + j] || '', oldBlock[j]);
           let lineHasRare = false;
           for (const t of extractTokens(oldBlock[j])) if (rareTokens.has(t)) { lineHasRare = true; break; }
+          let lineHasUnique = false;
+          for (const t of extractTokens(oldBlock[j])) if (uniqueTokens.has(t)) { lineHasUnique = true; break; }
+          if (lineHasUnique) {
+            keyLineCount++;
+            if (sim >= 0.9) keyLineHitCount++;
+          }
           totalScore += sim * (lineHasRare ? 2 : 1);
           totalWeight += (lineHasRare ? 2 : 1);
         }
-        const finalScore = totalWeight > 0 ? totalScore / totalWeight : 0;
-        if (!best || finalScore > best.score) best = { score: finalScore, rareHits, idx: i };
+        let finalScore = totalWeight > 0 ? totalScore / totalWeight : 0;
+        // P1_rare_line_boost: 所有"含唯一 token"的行都接近完美命中 → 至少 93%
+        if (keyLineCount > 0 && keyLineHitCount === keyLineCount && finalScore < 0.93) {
+          finalScore = 0.93;
+        }
+        if (finalScore > 0) candidates.push({ score: finalScore, rareHits, idx: i });
       }
 
+      // P0_2_arbitration: 排序 + 取 top2
+      candidates.sort((a, b) => b.score - a.score);
+      const best = candidates[0] || null;
+      const second = candidates[1] || null;
+
       if (best) {
+        // P0_2_arbitration: top1/top2 差距过小时拒绝（避免并列静默误伤）
+        const minMargin = options.fuzzyMinMargin ?? 0.05;
+        const force = options.force ?? false;
+        let ambiguous = false;
+        if (!force && second && best.score >= fuzzyThreshold) {
+          const margin = best.score - second.score;
+          if (margin < minMargin) ambiguous = true;
+        }
+
+        if (ambiguous) {
+          const margin = best.score - second!.score;
+          return {
+            ok: false,
+            message:
+              '模糊匹配存在 ' + candidates.length + ' 个近似候选，可能"打错位置"。\n'
+              + '  top1: ' + (best.score * 100).toFixed(1) + '% @ L' + (best.idx + 1) + '\n'
+              + '  top2: ' + (second!.score * 100).toFixed(1) + '% @ L' + (second!.idx + 1) + '\n'
+              + '  margin: ' + (margin * 100).toFixed(1) + '% < ' + (minMargin * 100).toFixed(0) + '%\n'
+              + '  💡 缩小 hunk 上下文、提高 --fuzzy-threshold，或加 --force 强制接受 top1',
+            suggestion: {
+              line: best.idx + 1,
+              score: best.score,
+              context: currentLines.slice(Math.max(0, best.idx - 2), Math.min(currentLines.length, best.idx + oldBlock.length + 2)),
+              reason: '存在并列候选，是否强制应用此处？（--force）',
+            },
+          };
+        }
+
         if (autoHeal && best.score >= fuzzyThreshold - 0.15) {
           const actualBlock = currentLines.slice(best.idx, best.idx + oldBlock.length);
           const healedNew = healNewBlock(oldBlock, newBlock, actualBlock);
@@ -238,9 +318,9 @@ export function applyPatch(
           }
         }
 
-        if (foundIdx === -1 && best.score >= fuzzyThreshold) {
+        if (foundIdx === -1 && (best.score >= fuzzyThreshold || force)) {
           foundIdx = best.idx;
-          console.log('  [tred patch] 模糊命中 (相似度 ' + (best.score * 100).toFixed(1) + '%, 行 ' + (foundIdx + 1) + ')');
+          console.log('  [tred patch] 模糊命中 (相似度 ' + (best.score * 100).toFixed(1) + '%, 行 ' + (foundIdx + 1) + ', 候选 ' + candidates.length + (force && best.score < fuzzyThreshold ? ', --force 覆盖' : '') + ')');
         } else if (foundIdx === -1) {
           const ctxStart = Math.max(0, best.idx - 2);
           const ctxEnd = Math.min(currentLines.length, best.idx + oldBlock.length + 2);
@@ -251,9 +331,25 @@ export function applyPatch(
             writeFileSync('tred-suggest.html', htmlStr);
             console.log('  [tred suggest] 可视化报告已生成: tred-suggest.html');
           }
+          // P1: 诊断最低匹配行 + --auto-heal 提示
+          let worstJ = -1, worstSim = 2;
+          for (let j = 0; j < oldBlock.length; j++) {
+            const s = weightedLineSimilarity(currentLines[best.idx + j] || '', oldBlock[j]);
+            if (s < worstSim) { worstSim = s; worstJ = j; }
+          }
+          let diag = '';
+          if (worstJ >= 0) {
+            diag = '\n  最低匹配行 hunk[' + worstJ + '] ' + (worstSim * 100).toFixed(1) + '%'
+              + '\n    预期: ' + oldBlock[worstJ].slice(0, 100)
+              + '\n    实际: ' + (currentLines[best.idx + worstJ] || '').slice(0, 100);
+          }
+          let autoHint = '';
+          if (!autoHeal && best.score >= fuzzyThreshold - 0.15) {
+            autoHint = '\n  💡 加 --auto-heal 可自动修正上下文（差距 ' + ((fuzzyThreshold - best.score) * 100).toFixed(1) + '%）';
+          }
           return {
             ok: false,
-            message: '模糊匹配得分 ' + (best.score * 100).toFixed(1) + '% 未达阈值 ' + (fuzzyThreshold * 100).toFixed(0) + '%',
+            message: '模糊匹配得分 ' + (best.score * 100).toFixed(1) + '% 未达阈值 ' + (fuzzyThreshold * 100).toFixed(0) + '%' + diag + autoHint,
             suggestion: { line: best.idx + 1, score: best.score, context: currentCtx, reason: '是不是想改这里？' }
           };
         }
