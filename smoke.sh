@@ -3,7 +3,14 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
-export TMPDIR="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+# 跨平台 TMPDIR 兼容
+if [ -n "${PREFIX:-}" ]; then
+  # Termux 环境
+  export TMPDIR="${TMPDIR:-$PREFIX/tmp}"
+elif [ -z "${TMPDIR:-}" ]; then
+  # 普通 Linux / macOS 兜底
+  export TMPDIR="/tmp"
+fi
 mkdir -p "$TMPDIR" 2>/dev/null || true
 
 SMOKE=".tred-smoke.mts"

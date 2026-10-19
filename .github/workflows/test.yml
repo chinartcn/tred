@@ -15,48 +15,59 @@ jobs:
         node: [20, 22]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Setup Node ${{ matrix.node }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
+          cache: 'pnpm'
 
       - name: Install
-        run: npm ci
+        run: pnpm install
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Fast tests
-        run: npm run test:fast
+        run: pnpm run test:fast
 
   smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-      - run: npm ci
+          cache: 'pnpm'
+      - run: pnpm install
+      - run: pnpm run build
       - name: Smoke
         run: bash smoke.sh
 
-  # 冒烟矩阵：Ubuntu + macOS 各跑一次，catch 平台差异（如 /tmp 缺失）
   smoke-macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-      - run: npm ci
+          cache: 'pnpm'
+      - run: pnpm install
+      - run: pnpm run build
       - name: Smoke
         run: bash smoke.sh

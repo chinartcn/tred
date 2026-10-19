@@ -4,11 +4,20 @@ import ts from 'typescript';
 import { checkSyntax } from './safety.js';
 
 function dedent(str: string): string {
-  const lines = str.split('\n');
-  const minIndent = lines
+  // P0_v367_dedent: 公共前缀去缩进，tab/space 混合也安全
+  const lines = str.replace(/\r\n/g, '\n').split('\n');
+  const indents = lines
     .filter(l => l.trim().length > 0)
-    .reduce((min, l) => Math.min(min, l.match(/^\s*/)![0].length), Infinity);
-  return lines.map(l => l.slice(minIndent)).join('\n');
+    .map(l => l.match(/^[ \t]*/)![0]);
+  if (indents.length === 0) return str;
+  let commonPrefix = indents[0];
+  for (const ind of indents.slice(1)) {
+    let k = 0;
+    while (k < commonPrefix.length && k < ind.length && commonPrefix[k] === ind[k]) k++;
+    commonPrefix = commonPrefix.slice(0, k);
+    if (commonPrefix.length === 0) break;
+  }
+  return lines.map(l => l.startsWith(commonPrefix) ? l.slice(commonPrefix.length) : l).join('\n');
 }
 
 // P2_private_shell: private/protected 方法拆分为"薄壳 + Impl"
@@ -253,88 +262,65 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   // P0-1: 收集 impl 里引用的自由标识符
   // ═══════════════════════════════════════════════════════════
   function collectFreeIdentifiers(nodes: ts.Node[]): Set<string> {
-  // P0_1_visit_signature: 访问参数类型 / 返回类型 / 类型参数，不只看 body
-  const free = new Set<string>();
-
-  function collectPatternNames(name: ts.BindingName, into: Set<string>): void {
+  // P0_v367_scopes: bindings/references 分离 + 逐个 impl 独立
+  function addBindingNames(name: ts.BindingName, into: Set<string>): void {
     if (ts.isIdentifier(name)) { into.add(name.text); return; }
     for (const el of name.elements) {
-      if (ts.isBindingElement(el)) collectPatternNames(el.name, into);
+      if (ts.isBindingElement(el)) addBindingNames(el.name, into);
     }
   }
-
-  function collectLocalDecls(node: ts.Node, into: Set<string>): void {
-    if (ts.isVariableStatement(node)) {
-      for (const d of node.declarationList.declarations) {
-        collectPatternNames(d.name, into);
-      }
-    } else if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) {
-      into.add(node.name.text);
-    } else if (ts.isImportDeclaration(node)) {
-      const clause = node.importClause;
-      if (clause) {
-        if (clause.name) into.add(clause.name.text);
-        if (clause.namedBindings) {
-          if (ts.isNamespaceImport(clause.namedBindings)) into.add(clause.namedBindings.name.text);
-          else if (ts.isNamedImports(clause.namedBindings)) {
-            for (const el of clause.namedBindings.elements) into.add(el.name.text);
-          }
-        }
-      }
-    } else if ((ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isEnumDeclaration(node)) && node.name) {
-      into.add(node.name.text);
-    }
+  function isNonReferencePosition(node: ts.Identifier): boolean {
+    const p = node.parent;
+    if (!p) return false;
+    if (ts.isPropertyAccessExpression(p) && p.name === node) return true;
+    if (ts.isPropertyAssignment(p) && p.name === node) return true;
+    if (ts.isMethodDeclaration(p) && p.name === node) return true;
+    if (ts.isPropertyDeclaration(p) && p.name === node) return true;
+    if (ts.isVariableDeclaration(p) && p.name === node) return true;
+    if (ts.isParameter(p) && p.name === node) return true;
+    if (ts.isFunctionDeclaration(p) && p.name === node) return true;
+    if (ts.isFunctionExpression(p) && p.name === node) return true;
+    if (ts.isClassDeclaration(p) && p.name === node) return true;
+    if (ts.isTypeParameterDeclaration(p) && p.name === node) return true;
+    if (ts.isInterfaceDeclaration(p) && p.name === node) return true;
+    if (ts.isTypeAliasDeclaration(p) && p.name === node) return true;
+    if (ts.isEnumDeclaration(p) && p.name === node) return true;
+    if (ts.isBindingElement(p)) return true;
+    if (ts.isQualifiedName(p) && p.right === node) return true;
+    return false;
   }
-
-  function visit(node: ts.Node, scope: Set<string>): void {
-    if (ts.isImportDeclaration(node) || ts.isImportClause(node) || ts.isNamespaceImport(node) || ts.isImportSpecifier(node)) return;
-
-    if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isConstructorDeclaration(node)) {
-      const newScope = new Set(scope);
-      if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) && node.name) newScope.add(node.name.text);
-      if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) newScope.add(node.name.text);
-      for (const p of node.parameters) collectPatternNames(p.name, newScope);
-
-      if (node.body && ts.isBlock(node.body)) {
-        for (const stmt of node.body.statements) collectLocalDecls(stmt, newScope);
-      }
-
-      for (const p of node.parameters) {
-        if (p.type) visit(p.type, newScope);
-        if (p.initializer) visit(p.initializer, newScope);
-      }
-      if (node.type) visit(node.type, newScope);
-      if (node.typeParameters) {
-        for (const tp of node.typeParameters) visit(tp, newScope);
-      }
-
-      if (node.body) visit(node.body, newScope);
+  function collectBindings(node: ts.Node, into: Set<string>): void {
+    if (ts.isVariableDeclaration(node) || ts.isBindingElement(node)) {
+      addBindingNames(node.name, into);
+    } else if (ts.isParameter(node)) {
+      addBindingNames(node.name, into);
+    } else if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) && node.name) {
+      into.add(node.name.text);
+    } else if (ts.isClassDeclaration(node) && node.name) {
+      into.add(node.name.text);
+    } else if (ts.isCatchClause(node) && node.variableDeclaration) {
+      addBindingNames(node.variableDeclaration.name, into);
+    }
+    ts.forEachChild(node, (c: ts.Node) => collectBindings(c, into));
+  }
+  function collectReferences(node: ts.Node, into: Set<string>): void {
+    if (ts.isIdentifier(node) && !isNonReferencePosition(node)) {
+      into.add(node.text);
       return;
     }
-
-    if (ts.isIdentifier(node)) {
-      const name = node.text;
-      if (scope.has(name)) return;
-      const p = node.parent;
-      if (p && ts.isPropertyAccessExpression(p) && p.name === node) return;
-      if (p && ts.isPropertyAssignment(p) && p.name === node) return;
-      if (p && ts.isMethodDeclaration(p) && p.name === node) return;
-      if (p && ts.isPropertyDeclaration(p) && p.name === node) return;
-      if (p && ts.isVariableDeclaration(p) && p.name === node) return;
-      if (p && ts.isParameter(p)) return;
-      if (p && ts.isTypeReferenceNode(p) && (p.typeName === node)) { free.add(name); return; }
-      if (p && ts.isTypeParameterDeclaration(p) && p.name === node) return;
-      if (p && ts.isInterfaceDeclaration(p) && p.name === node) return;
-      if (p && ts.isTypeAliasDeclaration(p) && p.name === node) return;
-      if (p && ts.isEnumDeclaration(p) && p.name === node) return;
-      if (p && ts.isBindingElement(p)) return;
-      if (p && ts.isQualifiedName(p) && p.left === node) return;
-      free.add(name);
-      return;
-    }
-    ts.forEachChild(node, (c) => visit(c, scope));
+    ts.forEachChild(node, (c: ts.Node) => collectReferences(c, into));
   }
-  for (const n of nodes) visit(n, new Set());
+  const free = new Set<string>();
+  for (const impl of nodes) {
+    const bindings = new Set<string>();
+    const references = new Set<string>();
+    collectBindings(impl, bindings);
+    collectReferences(impl, references);
+    for (const r of references) {
+      if (bindings.has(r)) continue;
+      free.add(r);
+    }
+  }
   return free;
 }
 
@@ -512,9 +498,19 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
 
       let bodyStr = '{}';
       if (node.body && ts.isBlock(node.body)) {
-        const inner = node.body.statements.map(st => st.getText(sf)).join('\n');
-        const dedented = dedent(inner).trim();
-        bodyStr = '{\n  ' + dedented.replace(/\n/g, '\n  ') + '\n}';
+        // P0_v367_bodyStr: 显式逐行加缩进
+        const stTexts: string[] = [];
+        for (const st of node.body.statements) {
+          stTexts.push(st.getText(sf).replace(/\r\n/g, '\n'));
+        }
+        const dedented = dedent(stTexts.join('\n'));
+        const lines = dedented.split('\n');
+        const indentedLines: string[] = [];
+        for (const line of lines) {
+          if (line.length === 0) indentedLines.push('');
+          else indentedLines.push('  ' + line);
+        }
+        bodyStr = '{\n' + indentedLines.join('\n') + '\n}';
       }
 
       const allParams = 'this: ' + targetClass + (params ? ', ' + params : '');
@@ -535,9 +531,19 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
         const returnType = arrow.type ? ': ' + arrow.type.getText(sf) : '';
         let bodyStr = arrow.body.getText(sf);
         if (ts.isBlock(arrow.body)) {
-          const inner = arrow.body.statements.map(st => st.getText(sf)).join('\n');
-          const dedented = dedent(inner).trim();
-          bodyStr = '{\n  ' + dedented.replace(/\n/g, '\n  ') + '\n}';
+          // P0_v367_bodyStr: 显式逐行加缩进
+          const stTexts: string[] = [];
+          for (const st of arrow.body.statements) {
+            stTexts.push(st.getText(sf).replace(/\r\n/g, '\n'));
+          }
+          const dedented = dedent(stTexts.join('\n'));
+          const lines = dedented.split('\n');
+          const indentedLines: string[] = [];
+          for (const line of lines) {
+            if (line.length === 0) indentedLines.push('');
+            else indentedLines.push('  ' + line);
+          }
+          bodyStr = '{\n' + indentedLines.join('\n') + '\n}';
         }
         const fnKw = isAsync ? 'async function' : 'function';
         text = comments + 'export const ' + exportName + ' = ' + fnKw + '(this: ' + targetClass + (params ? ', ' + params : '') + ')' + returnType + ' ' + bodyStr + ';';
