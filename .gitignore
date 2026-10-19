@@ -73,3 +73,8 @@ add-smoke-cases.mjs
 p0-2-arbitration.sh
 p1-3-explain.sh
 fix-*.sh
+fix-*.sh
+p0-*.sh
+p1-*.sh
+p2-*.sh
+add-smoke-cases.mjs

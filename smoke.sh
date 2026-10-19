@@ -94,11 +94,15 @@ t('patch：oldStart 超界不崩', () => {
 });
 
 // ── 7. split 无 --class：自动识别类方法 ──
-t('split 无 --class：自动识别类方法', () => {
+t('split 无 --class：自动识别类方法（薄壳）', () => {
   const dir = mk({ 'x.ts': 'export class Engine {\n  pasteBlueprint(bp: any) { return bp; }\n  other() {}\n}\n' });
   const r = splitFile(join(dir, 'x.ts'), ['pasteBlueprint'], 'macros.ts');
   assert.equal(r.ok, true, r.message);
-  assert.match(readFileSync(join(dir, 'macros.ts'), 'utf-8'), /export function pasteBlueprint\(this: Engine/);
+  const out = readFileSync(join(dir, 'macros.ts'), 'utf-8');
+  const src = readFileSync(join(dir, 'x.ts'), 'utf-8');
+  assert.match(out, /export function pasteBlueprintImpl\(this: Engine/);
+  assert.match(src, /pasteBlueprint\(bp: any\)\s*\{[\s\S]*?return pasteBlueprintImpl\.call\(this, bp\);/);
+  assert.doesNotMatch(src, /Object\.assign/);
   rmSync(dir, { recursive: true });
 });
 
@@ -130,12 +134,15 @@ t('split static 拒绝', () => {
   rmSync(dir, { recursive: true });
 });
 
-// ── 11. split private 拒绝 ──
-t('split private 拒绝', () => {
-  const dir = mk({ 'x.ts': 'export class T {\n  private bar() {}\n}\n' });
+// ── 11. split private 拆分（薄壳）──
+t('split private 拆分（薄壳）', () => {
+  const dir = mk({ 'x.ts': 'export class T {\n  private bar() { return 1; }\n}\n' });
   const r = splitFile(join(dir, 'x.ts'), ['bar'], 'out.ts');
-  assert.equal(r.ok, false);
-  assert.match(String(r.message), /非 public/);
+  assert.equal(r.ok, true, r.message);
+  const out = readFileSync(join(dir, 'out.ts'), 'utf-8');
+  const src = readFileSync(join(dir, 'x.ts'), 'utf-8');
+  assert.match(out, /export function barImpl\(this: T\)/, '新文件应生成 barImpl');
+  assert.match(src, /private bar\(\)\s*\{[\s\S]*?return barImpl\.call\(this\);/, '原文件应保留 private 薄壳');
   rmSync(dir, { recursive: true });
 });
 
@@ -229,6 +236,57 @@ t('P0-2 多候选：--force 强制接受', () => {
   const r = applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.8, force: true });
   assert.equal(r.ok, true, r.message);
   assert.match(readFileSync(f, 'utf-8'), /appleCount = 101/);
+  rmSync(dir, { recursive: true });
+});
+
+// ── 16. P0-1 复制 import ──
+t('P0-1 复制 import', () => {
+  const dir = mk({ 'x.ts': [
+    "import { Graphics, Text } from 'pixi.js';",
+    "import type { NodeData } from './types';",
+    'export class Engine {',
+    '  renderNode(node: NodeData) {',
+    '    const g = new Graphics();',
+    '    const t = new Text(\'x\');',
+    '    return g;',
+    '  }',
+    '}',
+  ].join('\n') });
+  const r = splitFile(join(dir, 'x.ts'), ['renderNode'], 'render.ts', 'Engine');
+  assert.equal(r.ok, true, r.message);
+  const out = readFileSync(join(dir, 'render.ts'), 'utf-8');
+  assert.match(out, /import \{ Graphics, Text \} from 'pixi\.js';/);
+  assert.match(out, /import type \{ NodeData \} from '\.\/types';/);
+  rmSync(dir, { recursive: true });
+});
+
+// ── 17. P1-3 impl 访问未拆的 private 方法报错 ──
+t('P1-3 impl 访问未拆 private 方法报错', () => {
+  const dir = mk({ 'x.ts': [
+    'export class Engine {',
+    '  private foo() { return 1; }',
+    '  bar() { return this.foo(); }',
+    '}',
+  ].join('\n') });
+  const r = splitFile(join(dir, 'x.ts'), ['bar'], 'out.ts', 'Engine');
+  assert.equal(r.ok, false);
+  assert.match(String(r.message), /private\/protected 方法被拆分方法的 impl 调用/);
+  assert.match(String(r.message), /foo/);
+  rmSync(dir, { recursive: true });
+});
+
+// ── 18. P0-2 无 Object.assign（全薄壳）──
+t('P0-2 public 也走薄壳，无 Object.assign', () => {
+  const dir = mk({ 'x.ts': [
+    'export class Engine {',
+    '  public run() { return 1; }',
+    '}',
+  ].join('\n') });
+  const r = splitFile(join(dir, 'x.ts'), ['run'], 'out.ts', 'Engine');
+  assert.equal(r.ok, true, r.message);
+  const src = readFileSync(join(dir, 'x.ts'), 'utf-8');
+  assert.doesNotMatch(src, /Object\.assign/);
+  assert.match(src, /public run\(\)\s*\{[\s\S]*?return runImpl\.call\(this\);/);
   rmSync(dir, { recursive: true });
 });
 
