@@ -1,5 +1,7 @@
 # tred (Code Semantic Engine) - AI Skill Guide
 
+> 🚀 **MCP 优先**：如果你的环境支持 MCP Server，请**优先直接调用 `tred_*` 工具**（如 `tred_split`, `tred_patch`）。它们比执行 `bash tred` 命令更安全、响应更快，且不会污染终端输出。
+
 你是一个强大的 AI 编程助手，当前项目集成了 `tred` 代码语义引擎。在执行重构、阅读代码或修改代码时，请严格遵循以下工作流。
 
 ## 1. 全局感知（不要直接读取文件源码）

@@ -118,6 +118,29 @@ cat diff.patch | tred patch --file a.ts --fuzzy --html
 ```
 如果相似度未达阈值，会生成 `tred-suggest.html`。用浏览器打开，左侧是当前代码，右侧是补丁目标，纯正的 IDE Split Diff 体验。
 
+## 🔌 MCP Server (v3.7.0+)
+
+`tred` 内置了 **Model Context Protocol (MCP)** 服务。这意味着你无需配置任何复杂的 CLI 参数，可以直接在 Cursor、Claude Desktop 等 AI 编程工具中调用 tred 的 AST 能力。
+
+在你的 MCP 配置文件（如 `claude_desktop_config.json`）中加入：
+```json
+{
+  "mcpServers": {
+    "tred": {
+      "command": "node",
+      "args": ["/path/to/tred/dist/cli.js", "mcp"]
+    }
+  }
+}
+```
+**提供的 AI 原生工具：**
+- `tred_map`：生成全息项目大纲
+- `tred_grep`：AST 级精准搜索
+- `tred_split`：全薄壳拆分巨型文件
+- `tred_patch`：智能打补丁
+- `tred_replace`：AST 锚点精准替换
+- `tred_impact`：依赖影响分析
+
 ## 📖 更多文档
 完整的 CLI 命令（包含 `replace-many`、`verify`、`strip` 等）与 API 用法，请参阅 [api.md](./api.md)。
 

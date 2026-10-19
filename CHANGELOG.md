@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.7.0] - 2026-10-19
+
+### Added
+- **原生 MCP (Model Context Protocol) 支持**：
+  - 新增 `tred mcp` 命令，以 stdio 模式启动 MCP Server。
+  - 内置 6 个核心工具：`tred_map`、`tred_grep`、`tred_split`、`tred_patch`、`tred_replace`、`tred_impact`。
+  - 使得 Cursor、Claude Desktop 等 AI 工具可以直接调用 AST 重构引擎，无需通过 shell 执行。
+- 依赖更新：引入 `@modelcontextprotocol/sdk` 与 `zod`。
+
 ## [3.6.7] - 2026-10-19
 
 ### Added

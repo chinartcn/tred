@@ -13,6 +13,7 @@ import { generateMap } from './map.js';
 import { analyzeImpact } from './impact.js';
 import { splitFile } from './split.js';
 import { applyPatch } from './patch.js';
+import { startMcpServer } from './mcp.js';
 
 const __pkgDir = _dirname(fileURLToPath(import.meta.url));
 const VERSION: string = (JSON.parse(
@@ -1109,6 +1110,7 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (flags.version || positionals[0] === 'version') { process.stdout.write('tred v' + VERSION + '\n'); return; }
 
   const cmd = positionals[0];
+  if (cmd === 'mcp') { await startMcpServer(); return; }
   if (cmd === 'grep')         { process.exit(await cmdGrep(flags, positionals)); }
   if (cmd === 'map')          { process.exit(await cmdMap(flags)); }
   if (cmd === 'impact')       { process.exit(await cmdImpact(flags, positionals)); }

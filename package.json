@@ -41,9 +41,11 @@
     "release": "node scripts/release.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "node-html-parser": "^9.0.4",
     "postcss": "^8.5.30",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
