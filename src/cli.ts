@@ -1120,7 +1120,7 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (cmd === 'run') {
     const cstFile = positionals[1] || (typeof flags.file === 'string' ? flags.file : undefined);
     if (!cstFile) die('用法: tred run <file.cst> 或 tred run --file <file.cst>');
-    await runCst(cstFile);
+    await runCst(cstFile, { allowNodejs: Boolean(flags['allow-nodejs']) });
     process.exit(0);
   }
   if (cmd === 'replace')      { process.exit(await cmdReplace(flags)); }

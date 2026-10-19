@@ -121,7 +121,7 @@ export function parseCst(source: string): ParsedCst {
 // ==============================================================================
 // 执行器（生成临时 mjs 并运行）
 // ==============================================================================
-export async function runCst(filePath: string): Promise<void> {
+export async function runCst(filePath: string, options?: { allowNodejs?: boolean }): Promise<void> {
   const source = readFileSync(filePath, 'utf-8');
   let parsed: ParsedCst;
   try {
@@ -150,6 +150,10 @@ export async function runCst(filePath: string): Promise<void> {
   let script = `import * as tred from ${tredPath};\n\n`;
 
   if (nodeCode) {
+    if (!options?.allowNodejs) {
+      console.error('❌ [安全拦截] 检测到 /#nodejs 块。为防止 RCE，默认禁止执行。请确认脚本安全后，加 --allow-nodejs 重试。');
+      process.exit(1);
+    }
     script += `// --- User Node.js Code ---\n${nodeCode}\n// -------------------------\n\n`;
   }
 
@@ -160,25 +164,31 @@ export async function runCst(filePath: string): Promise<void> {
       if (op.props.selector) {
         try { JSON.parse(op.props.selector); selStr = op.props.selector; } catch { throw new Error('replace 的 selector 不是合法 JSON'); }
       }
-      script += `  const r = await tred.replace({
-    file: ${JSON.stringify(op.props.file)},
-    anchor: ${JSON.stringify(op.props.anchor || '')},
-    fingerprint: ${JSON.stringify(op.props.fingerprint || '')},
-    content: ${JSON.stringify(op.content || '')},
-    autoInjectAnchor: ${!!op.props.anchor},
-    dryRun: ${op.props.dryRun === 'true'},
-    astSelector: ${selStr}
-  });
-  if (r.status === 'failed') { console.error('❌ replace 失败:', r.message); process.exit(1); }\n`;
+      script += `  {
+    const r = await tred.replace({
+      file: ${JSON.stringify(op.props.file)},
+      anchor: ${JSON.stringify(op.props.anchor || '')},
+      fingerprint: ${JSON.stringify(op.props.fingerprint || '')},
+      content: ${JSON.stringify(op.content || '')},
+      autoInjectAnchor: ${!!op.props.anchor},
+      dryRun: ${op.props.dryRun === 'true'},
+      selector: ${selStr}
+    });
+    if (r.status === 'failed') { console.error('❌ replace 失败:', r.message); process.exit(1); }
+  }\n`;
     } else if (op.type === 'split') {
       const names = (op.props.name || '').split(',').map(s => JSON.stringify(s.trim())).join(', ');
-      script += `  const res = tred.splitFile(${JSON.stringify(op.props.file)}, [${names}], ${JSON.stringify(op.props.to)}, ${JSON.stringify(op.props.className || '')});
-    if (!res.ok) { console.error('❌ split 失败:', res.message); process.exit(1); }\n`;
+      script += `  {
+    const res = tred.splitFile(${JSON.stringify(op.props.file)}, [${names}], ${JSON.stringify(op.props.to)}, ${JSON.stringify(op.props.className || '')});
+    if (!res.ok) { console.error('❌ split 失败:', res.message); process.exit(1); }
+  }\n`;
     } else if (op.type === 'impact') {
       script += `  console.log(tred.analyzeImpact(${JSON.stringify(op.props.dir || '.')}, ${JSON.stringify(op.props.target)}));\n`;
     } else if (op.type === 'patch') {
-      script += `  const patchRes = tred.applyPatch(${JSON.stringify(op.props.file)}, ${JSON.stringify(op.content || '')}, { fuzzy: true });
-    if (!patchRes.ok) { console.error('❌ patch 失败:', patchRes.message); process.exit(1); }\n`;
+      script += `  {
+    const patchRes = tred.applyPatch(${JSON.stringify(op.props.file)}, ${JSON.stringify(op.content || '')}, { fuzzy: true });
+    if (!patchRes.ok) { console.error('❌ patch 失败:', patchRes.message); process.exit(1); }
+  }\n`;
     }
   }
   script += `}\n\n__main__().catch(e => { console.error('❌ 执行失败:', e.message); process.exit(1); });\n`;
