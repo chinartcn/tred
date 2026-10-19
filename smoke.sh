@@ -297,6 +297,46 @@ t('P0-2 public 也走薄壳，无 Object.assign', () => {
   rmSync(dir, { recursive: true });
 });
 
+// ── 19. CST 脚本：Node 逻辑 + 长文本替换 + patch ──
+t('CST 脚本：Node 逻辑 + 长文本替换 + patch', async () => {
+  const dir = mk({});
+  const cstFile = join(dir, 'test.cst');
+  const targetFile = join(dir, 'out.ts');
+  const cstContent = [
+    '/#nodejs',
+    'import fs from "node:fs";',
+    'fs.writeFileSync(' + JSON.stringify(targetFile) + ', "const a = 1;")',
+    '/#nodejs.end',
+    '',
+    'replace {',
+    '  file: ' + targetFile,
+    '  selector: {"kind":"variable","variableName":"a"}',
+    '  content:',
+    '    const a = 999;',
+    '  /#end',
+    '}',
+    '',
+    'patch {',
+    '  file: ' + targetFile,
+    '  content:',
+    '    @@ -1,1 +1,1 @@',
+    '    -const a = 999;',
+    '    +const a = 777;',
+    '  /#end',
+    '}'
+  ].join('\n');
+  writeFileSync(cstFile, cstContent);
+  
+  // 直接在子进程中调用 CLI 跑 tred run
+  const { spawnSync } = await import('node:child_process');
+  const res = spawnSync(process.execPath, [join(process.cwd(), 'dist/cli.js'), 'run', cstFile], { encoding: 'utf-8' });
+  assert.equal(res.status, 0, res.stderr);
+  
+  const finalOut = readFileSync(targetFile, 'utf-8').trim();
+  assert.equal(finalOut, 'const a = 777;');
+  rmSync(dir, { recursive: true });
+});
+
 process.stdout.write(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail > 0 ? 1 : 0);
 SMOKE_EOF

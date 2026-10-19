@@ -94,6 +94,7 @@
     "LICENSE",
     "skill.md",
     "api.md",
-    "*.cst"
+    "*.cst",
+    "examples/"
   ]
 }

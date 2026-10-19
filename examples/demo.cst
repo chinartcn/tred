@@ -1,0 +1,30 @@
+// demo.cst: tred run 官方示例
+// 执行: tred run examples/demo.cst
+
+/#nodejs
+// 这里可以写任意原生 Node.js 逻辑
+import fs from 'node:fs';
+console.log('🚀 正在准备环境...');
+if (!fs.existsSync('demo-target.ts')) {
+  fs.writeFileSync('demo-target.ts', 'export const hello = "world";\n');
+}
+/#nodejs.end
+
+// 使用 AST 替换（无需转义）
+replace {
+  file: demo-target.ts
+  selector: {"kind":"variable","variableName":"hello"}
+  content:
+    export const hello = "TRED CST IS AWESOME";
+  /#end
+}
+
+// 使用 Diff 补丁
+patch {
+  file: demo-target.ts
+  content:
+    @@ -1,1 +1,1 @@
+    -export const hello = "TRED CST IS AWESOME";
+    +export const hello = "TRED CST IS ULTIMATE";
+  /#end
+}
