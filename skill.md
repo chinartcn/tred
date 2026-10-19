@@ -149,3 +149,32 @@ cat diff.patch | tred patch --file a.ts --fuzzy --html
 # 正确示例：将 public 方法和它依赖的 private 方法一起拆走
 tred split --file engine.ts --name renderNode,calculatePosition --to render.ts
 ```
+## 🚀 0. 终极兵器：tred run (.cst 脚本)
+
+如果你是 AI，在需要大批量重构或长文本替换时，**不要用 diff，也不要用 JSON**。
+请直接在项目根目录创建一个 `.cst` 文件，然后在终端执行 `tred run <file.cst>`。
+
+它支持无转义的长文本，且执行前会通过完整的语法门禁。长文本内容请用 4 空格缩进（如下示例）：
+
+    // .cst 示例
+    replace {
+      file: src/core/engine.ts
+      selector: {"kind":"method","className":"Engine","methodName":"renderNode"}
+      content:
+        public renderNode(node) {
+          console.log("AI 可以随便写代码，无需反引号，无需转义！");
+        }
+      /#end
+    }
+
+同时，你可以在 `.cst` 顶部通过 `/#nodejs` 块注入任意的原生 Node.js 逻辑（读取环境变量、生成文件、写循环判断等）：
+
+    /#nodejs
+    import fs from 'node:fs';
+    if (fs.existsSync('src/legacy.ts')) {
+      // 这里可以写任意原生逻辑
+    }
+    /#nodejs.end
+
+---
+
