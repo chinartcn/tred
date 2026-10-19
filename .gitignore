@@ -49,3 +49,24 @@ yarn-error.log*
 !bin/*.mjs
 
 scripts/
+
+# tred 临时
+src/*.bak.*
+*.bak.*
+.fix-*.mjs
+.fix-*.patch
+.tred-smoke.mts
+
+# tred 备份 / 临时产物
+*.bak.*
+*.bak.autoclass
+*.bak.genfix*
+.fix-*.mjs
+.fix-*.patch
+.tred-smoke.mts
+fix-*.sh
+add-smoke-cases.mjs
+.engine-test.ts
+.engine-macros.ts
+.edge.ts
+.out*.ts

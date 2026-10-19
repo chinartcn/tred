@@ -123,6 +123,19 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
     return { ok: false, message: '未找到任何指定的节点' };
   }
 
+  // 后置统一检查：拒绝 static/private/protected
+  // 无论走 --class 还是自动识别路径，只要最终提取的成员含这些修饰符就拒绝
+  for (const node of extractedNodes) {
+    if (!ts.canHaveModifiers(node)) continue;
+    const mods = ts.getModifiers(node) ?? [];
+    const nm = ('name' in node && ts.isIdentifier((node as any).name)) ? ((node as any).name as ts.Identifier).text : '?';
+    if (mods.some(m => m.kind === ts.SyntaxKind.StaticKeyword)) {
+      return { ok: false, message: '暂不支持拆分 static 成员: ' + nm };
+    }
+    if (mods.some(m => m.kind === ts.SyntaxKind.PrivateKeyword || m.kind === ts.SyntaxKind.ProtectedKeyword)) {
+      return { ok: false, message: '暂不支持拆分非 public 成员: ' + nm };
+    }
+  }
   // ── 构建新文件 ──
   const newFileLines: string[] = [];
   if (targetClass) {
