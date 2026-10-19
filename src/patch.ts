@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { checkSyntax } from './safety.js';
 import { getSimilarity } from './fuzzy.js';
+import { getEmbedding, getCache, saveCache } from './embedding.js';
+import { buildAndSearch } from './vector-index.js';
 
 export interface PatchExplain {
   candidateCount: number;
@@ -90,11 +92,11 @@ function healNewBlock(oldBlock: string[], newBlock: string[], actualBlock: strin
   return healed;
 }
 
-export function applyPatch(
+export async function applyPatch(
   filePath: string,
   patchText: string,
-  options: { fuzzy?: boolean, fuzzyThreshold?: number, minRareTokens?: number, autoHeal?: boolean, html?: boolean, fuzzyMinMargin?: number, force?: boolean } = {}, // P0_2_arbitration
-): PatchResult {
+  options: { fuzzy?: boolean, fuzzyThreshold?: number, minRareTokens?: number, autoHeal?: boolean, html?: boolean, fuzzyMinMargin?: number, force?: boolean, semantic?: boolean } = {},
+): Promise<PatchResult> {
   let lastExplain: PatchExplain | undefined; // P1_3_explain
   const original = readFileSync(filePath, 'utf-8').replace(/\r\n/g, '\n');
   const lines = original.split('\n');
@@ -313,6 +315,63 @@ export function applyPatch(
 
       // P0_2_arbitration: 排序 + 取 top2
       candidates.sort((a, b) => b.score - a.score);
+      
+      // 🚀 v3.9.1 Hybrid Search 精排 (HNSW)
+      if (options.semantic && candidates.length > 0) {
+        const topK = candidates.slice(0, 3);
+        const hunkText = oldBlock.join('\n');
+        const cache = getCache();
+        const hunkKey = 'hunk:' + hunkText.trim().slice(0, 100);
+        let hunkVec: number[] | null | undefined = cache[hunkKey];
+        
+        if (!hunkVec) {
+          hunkVec = await getEmbedding(hunkText);
+          if (hunkVec) cache[hunkKey] = hunkVec;
+        }
+
+        if (hunkVec) {
+          const hnswCandidates: { idx: number, text: string, vector: number[], score: number }[] = [];
+          
+          for (const cand of topK) {
+            const candText = currentLines.slice(cand.idx, cand.idx + oldBlock.length).join('\n');
+            const candKey = 'cand:' + candText.trim().slice(0, 100);
+            let candVec: number[] | null | undefined = cache[candKey];
+            if (!candVec) {
+              candVec = await getEmbedding(candText);
+              if (candVec) cache[candKey] = candVec;
+            }
+            if (candVec) {
+              hnswCandidates.push({ idx: cand.idx, text: candText, vector: candVec, score: cand.score });
+            }
+          }
+          
+          if (hnswCandidates.length > 0) {
+            // 用持久化 HNSW 索引搜索
+            const searchResults = buildAndSearch(hnswCandidates, hunkVec);
+            
+            // 融合打分
+            for (const res of searchResults) {
+              // HNSW 返回的是距离 (越小越近)，转成相似度
+              const vecSim = Math.max(0, 1 - res.distance); 
+              const cand = candidates.find(c => c.idx === res.idx);
+              if (cand) {
+                cand.score = cand.score * 0.6 + vecSim * 0.4;
+              }
+            }
+            
+            saveCache(cache);
+            // 重新排序
+            topK.sort((a, b) => b.score - a.score);
+            candidates[0] = topK[0];
+            candidates[1] = topK[1] || null;
+          } else {
+            console.warn('⚠️ [tred] 向量生成失败，跳过语义重排。');
+          }
+        } else {
+          console.warn('⚠️ [tred] Embedding 不可用，本次跳过语义重排。');
+        }
+      }
+
       const best = candidates[0] || null;
       const second = candidates[1] || null;
 

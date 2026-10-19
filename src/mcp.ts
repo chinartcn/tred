@@ -103,7 +103,7 @@ server.tool(
   },
   async ({ file, diff, fuzzy, autoHeal }) => {
     try {
-      const res = applyPatch(file, diff, { fuzzy: fuzzy || false, autoHeal: autoHeal || false });
+      const res = await applyPatch(file, diff, { fuzzy: fuzzy || false, autoHeal: autoHeal || false });
       return { 
         isError: !res.ok,
         content: [{ 

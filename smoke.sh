@@ -81,22 +81,22 @@ t('split 顶层函数：正常提取', () => {
 });
 
 // ── 5. patch 正常应用 ──
-t('patch：正常应用', () => {
+t('patch：正常应用', async () => {
   const dir = mk({ 'a.ts': 'const a = 1;\nconst b = 2;\n' });
   const f = join(dir, 'a.ts');
   const diff = '@@ -1,2 +1,2 @@\n const a = 1;\n-const b = 2;\n+const b = 3;\n';
-  const r = applyPatch(f, diff, {});
+  const r = await applyPatch(f, diff, {});
   assert.equal(r.ok, true, r.message);
   assert.match(readFileSync(f, 'utf-8'), /const b = 3/);
   rmSync(dir, { recursive: true });
 });
 
 // ── 6. patch oldStart 超界 ──
-t('patch：oldStart 超界不崩', () => {
+t('patch：oldStart 超界不崩', async () => {
   const dir = mk({ 'a.ts': 'const a = 1;\n' });
   const f = join(dir, 'a.ts');
   const diff = '@@ -999,1 +999,1 @@\n-const a = 1;\n+const a = 2;\n';
-  assert.doesNotThrow(() => applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.5 }));
+  await assert.doesNotReject(async () => applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.5 }));
   rmSync(dir, { recursive: true });
 });
 
@@ -154,7 +154,7 @@ t('split private 拆分（薄壳）', () => {
 });
 
 // ── 12. P1 改进：稀有词行全命中提升总分
-t('P1 改进：稀有词行全命中提升到 93%', () => {
+t('P1 改进：稀有词行全命中提升到 93%', async () => {
   const dir = mk({
     'a.ts': [
       'import { other2 } from "./other2";',
@@ -173,14 +173,14 @@ t('P1 改进：稀有词行全命中提升到 93%', () => {
     '+const specialUniqueTokenXYZ = 99;',
     '+import { changed1 } from "./changed1";',
   ].join('\n');
-  const r = applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.9 });
+  const r = await applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.9 });
   assert.equal(r.ok, true, r.message);
   assert.match(readFileSync(f, 'utf-8'), /specialUniqueTokenXYZ = 99/);
   rmSync(dir, { recursive: true });
 });
 
 // ── 13. P1：token 集相同给 0.97
-t('P1：token 集相同给高分', () => {
+t('P1：token 集相同给高分', async () => {
   const dir = mk({
     'a.ts': 'const alpha = 1;\nconst beta = 2;\nconst gamma = 3;\n',
   });
@@ -194,13 +194,13 @@ t('P1：token 集相同给高分', () => {
     '+const beta = 20;',
     '+const gamma = 30;',
   ].join('\n');
-  const r = applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.9 });
+  const r = await applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.9 });
   assert.equal(r.ok, true, r.message);
   rmSync(dir, { recursive: true });
 });
 
 // ── 14. P0-2 多候选仲裁：拒绝 ──
-t('P0-2 多候选：并列时拒绝', () => {
+t('P0-2 多候选：并列时拒绝', async () => {
   const dir = mk({ 'a.ts': [
     'function dupAlpha() {',
     '  const appleCount = 1;',
@@ -217,7 +217,7 @@ t('P0-2 多候选：并列时拒绝', () => {
   const before = readFileSync(f, 'utf-8');
   // 值只差 1，结构完全一致 → 两处候选分数极近
   const diff = '@@ -2,2 +2,2 @@\n-const appleCount = 100;\n-const bananaCount = 200;\n+const appleCount = 101;\n+const bananaCount = 201;\n';
-  const r = applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.8 });
+  const r = await applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.8 });
   assert.equal(r.ok, false, '应拒绝并列候选: ' + (r.message || ''));
   assert.match(String(r.message), /多个近似候选|并列|ambig|margin/i, '错误信息应说明并列：' + r.message);
   assert.equal(readFileSync(f, 'utf-8'), before, '不应修改文件');
@@ -225,7 +225,7 @@ t('P0-2 多候选：并列时拒绝', () => {
 });
 
 // ── 15. P0-2 多候选仲裁：--force 强制接受 ──
-t('P0-2 多候选：--force 强制接受', () => {
+t('P0-2 多候选：--force 强制接受', async () => {
   const dir = mk({ 'a.ts': [
     'function dupAlpha() {',
     '  const appleCount = 1;',
@@ -240,7 +240,7 @@ t('P0-2 多候选：--force 强制接受', () => {
   ].join('\n') });
   const f = join(dir, 'a.ts');
   const diff = '@@ -2,2 +2,2 @@\n-const appleCount = 100;\n-const bananaCount = 200;\n+const appleCount = 101;\n+const bananaCount = 201;\n';
-  const r = applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.8, force: true });
+  const r = await applyPatch(f, diff, { fuzzy: true, fuzzyThreshold: 0.8, force: true });
   assert.equal(r.ok, true, r.message);
   assert.match(readFileSync(f, 'utf-8'), /appleCount = 101/);
   rmSync(dir, { recursive: true });

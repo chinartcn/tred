@@ -200,7 +200,8 @@ async function cmdPatch(flagsRaw: Record<string, string | true | string[]>, posi
   const fuzzyMinMargin = typeof flags['fuzzy-min-margin'] === 'string' ? parseFloat(flags['fuzzy-min-margin']) : undefined;
   const force = Boolean(flags.force);
   const explain = Boolean(flags.explain);
-  const res = applyPatch(file, patchText, { fuzzy, fuzzyThreshold, minRareTokens, autoHeal, html, fuzzyMinMargin, force });
+  const semantic = Boolean(flags.semantic);
+  const res = await applyPatch(file, patchText, { fuzzy, fuzzyThreshold, minRareTokens, autoHeal, html, fuzzyMinMargin, force, semantic });
 
   // P1_3_explain: 结构化分数分解
   function formatExplain(e: import('./patch.js').PatchExplain): string {

@@ -1,6 +1,6 @@
 {
   "name": "@rtcn/tred",
-  "version": "3.8.5",
+  "version": "3.9.1",
   "type": "module",
   "description": "Anchor + AST precise find-and-replace with syntax validation, atomic writes, and idempotent fingerprints.",
   "scripts": {
@@ -41,7 +41,9 @@
     "release": "node scripts/release.mjs"
   },
   "dependencies": {
+    "@img/sharp-wasm32": "^0.35.5",
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "@orama/orama": "^3.1.18",
     "node-html-parser": "^9.0.4",
     "postcss": "^8.5.30",
     "typescript": "^5.5.4",
@@ -49,6 +51,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "onnxruntime-web": "^1.30.0",
     "tsx": "^4.19.0"
   },
   "bin": {
@@ -96,5 +99,8 @@
     "api.md",
     "*.cst",
     "examples/"
-  ]
+  ],
+  "optionalDependencies": {
+    "@huggingface/transformers": "^4.3.1"
+  }
 }
