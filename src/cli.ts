@@ -12,6 +12,7 @@ import { grepDir } from './grep.js';
 import { generateMap } from './map.js';
 import { analyzeImpact } from './impact.js';
 import { splitFile } from './split.js';
+import { chopFile } from './chopper.js';
 import { applyPatch } from './patch.js';
 import { runCst } from './cst.js';
 import { startMcpServer } from './mcp.js';
@@ -1116,6 +1117,13 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (cmd === 'grep')         { process.exit(await cmdGrep(flags, positionals)); }
   if (cmd === 'map')          { process.exit(await cmdMap(flags)); }
   if (cmd === 'impact')       { process.exit(await cmdImpact(flags, positionals)); }
+  if (cmd === 'chop') {
+    const file = requireStr(flags, 'file');
+    const outDir = typeof flags['dir'] === 'string' ? flags['dir'] : 'src/chopped';
+    const res = chopFile(file, outDir);
+    console.log(res.ok ? '✅ ' + res.message : '❌ ' + res.message);
+    process.exit(res.ok ? 0 : 1);
+  }
   if (cmd === 'split')        { process.exit(await cmdSplit(flags, positionals)); }
   if (cmd === 'patch')        { process.exit(await cmdPatch(flags, positionals)); }
   if (cmd === 'run') {
