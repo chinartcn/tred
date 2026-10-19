@@ -13,6 +13,7 @@ import { generateMap } from './map.js';
 import { analyzeImpact } from './impact.js';
 import { splitFile } from './split.js';
 import { applyPatch } from './patch.js';
+import { runCst } from './cst.js';
 import { startMcpServer } from './mcp.js';
 
 const __pkgDir = _dirname(fileURLToPath(import.meta.url));
@@ -1116,6 +1117,12 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (cmd === 'impact')       { process.exit(await cmdImpact(flags, positionals)); }
   if (cmd === 'split')        { process.exit(await cmdSplit(flags, positionals)); }
   if (cmd === 'patch')        { process.exit(await cmdPatch(flags, positionals)); }
+  if (cmd === 'run') {
+    const cstFile = positionals[1] || (typeof flags.file === 'string' ? flags.file : undefined);
+    if (!cstFile) die('用法: tred run <file.cst> 或 tred run --file <file.cst>');
+    await runCst(cstFile);
+    process.exit(0);
+  }
   if (cmd === 'replace')      { process.exit(await cmdReplace(flags)); }
   if (cmd === 'replace-many') { process.exit(await cmdReplaceMany(flags)); }
   if (cmd === 'ast')          { process.exit(await cmdAst(flags)); }

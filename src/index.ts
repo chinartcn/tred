@@ -528,3 +528,6 @@ export { serveHtml, tryOpenBrowser } from './serve.js';
 export type { ServeOptions, ServeHandle } from './serve.js';
 
 export { runOps } from './ops.js';
+
+export { runCst } from './cst.js';
+export type { ParsedCst, CstOp } from './cst.js';
