@@ -1,4 +1,4 @@
-# tred CLI & API Reference (v3.8.3)
+# tred CLI & API Reference (v3.8.5)
 
 ## 一、 CLI 完整手册
 

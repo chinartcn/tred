@@ -1,4 +1,4 @@
-# @rtcn/tred
+# @rtcn/tred (v3.8.5)
 > **AI 原生代码语义感知与重构引擎**。基于 AST 与长文本宏脚本，为大模型提供安全、幂等的重构契约。
 
 [![npm version](https://img.shields.io/npm/v/@rtcn/tred.svg)](https://www.npmjs.com/package/@rtcn/tred)

@@ -65,6 +65,9 @@ export function parseCst(source: string): ParsedCst {
         }
         currentContent = [];
         state = 'normal';
+      } else if (trimmed === '\\/#end') {
+        // 处理转义：/#end -> /#end
+        currentContent.push(line.replace('\\/#end', '/#end'));
       } else {
         currentContent.push(line);
       }
