@@ -229,6 +229,18 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   const allPrivateMethods = new Set<string>();
   const allPrivateFields = new Set<string>();
 
+  // 自动降级私有成员访问 (this.private -> (this as any).private)
+  function downgradePrivateAccess(code: string): string {
+    let newCode = code;
+    for (const access of thisAccesses) {
+      if (allPrivateFields.has(access) || allPrivateMethods.has(access)) {
+        const re = new RegExp('\\bthis\\.' + access + '\\b', 'g');
+        newCode = newCode.replace(re, '(this as any).' + access);
+      }
+    }
+    return newCode;
+  }
+
   if (classDecl) {
     for (const member of classDecl.members) {
       const mods = ts.canHaveModifiers(member) ? (ts.getModifiers(member) ?? []) : [];
@@ -483,14 +495,6 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
 
     let text = original.slice(node.getFullStart(), node.getEnd()).trim();
     
-    // 自动修复对 private 成员的访问限制（转为 (this as any).xxx）
-    for (const access of thisAccesses) {
-      if (allPrivateFields.has(access) || allPrivateMethods.has(access)) {
-        const re = new RegExp('\\bthis\\.' + access + '\\b', 'g');
-        text = text.replace(re, '(this as any).' + access);
-      }
-    }
-
     const comments = (() => {
       const m = text.match(/^(\/\*[\s\S]*?\*\/|\/\/[^\n]*\n)+/);
       return m ? m[0] : '';
