@@ -70,3 +70,6 @@ add-smoke-cases.mjs
 .engine-macros.ts
 .edge.ts
 .out*.ts
+p0-2-arbitration.sh
+p1-3-explain.sh
+fix-*.sh

@@ -197,10 +197,32 @@ async function cmdPatch(flagsRaw: Record<string, string | true | string[]>, posi
   // P0_2_cli: 多候选仲裁参数
   const fuzzyMinMargin = typeof flags['fuzzy-min-margin'] === 'string' ? parseFloat(flags['fuzzy-min-margin']) : undefined;
   const force = Boolean(flags.force);
+  const explain = Boolean(flags.explain);
   const res = applyPatch(file, patchText, { fuzzy, fuzzyThreshold, minRareTokens, autoHeal, html, fuzzyMinMargin, force });
+
+  // P1_3_explain: 结构化分数分解
+  function formatExplain(e: import('./patch.js').PatchExplain): string {
+    const lines: string[] = [];
+    lines.push('[tred explain] 候选 ' + e.candidateCount + ', reason: ' + e.reason);
+    if (e.best) {
+      const b = e.best;
+      lines.push('  top1 @ L' + b.line + ' (score ' + b.score.toFixed(4) + ')');
+      lines.push('    charSimAvg     ' + b.charSimAvg.toFixed(3));
+      lines.push('    tokenSimAvg    ' + b.tokenSimAvg.toFixed(3));
+      lines.push('    keyLines       ' + b.keyHits + '/' + b.keyLines + ' 命中');
+      lines.push('    rareHits       ' + b.rareHits);
+      lines.push('    positionOffset ' + (b.positionOffset >= 0 ? '+' : '') + b.positionOffset + ' 行');
+    }
+    if (e.second) {
+      const s = e.second;
+      lines.push('  top2 @ L' + s.line + ' (score ' + s.score.toFixed(4) + ', margin ' + (s.margin * 100).toFixed(1) + '%)');
+    }
+    return lines.join('\n');
+  }
 
   if (!res.ok) {
     console.error('❌ [tred patch] ' + res.message);
+    if (explain && res.explain) console.error('\n' + formatExplain(res.explain));
     if (res.suggestion) {
       console.log('\n💡 [tred suggest] 发现第 ' + res.suggestion.line + ' 行有 ' + (res.suggestion.score * 100).toFixed(1) + '% 相似度的代码块，' + res.suggestion.reason);
       console.log('   -----------------------------');
@@ -217,6 +239,7 @@ async function cmdPatch(flagsRaw: Record<string, string | true | string[]>, posi
   }
 
   console.log('✓ Patch 应用成功: ' + file);
+  if (explain && res.explain) console.log('\n' + formatExplain(res.explain));
   return 0;
 }
 
