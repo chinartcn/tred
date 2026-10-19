@@ -4,7 +4,9 @@
 
 ### 1. 块与转义
 - 长文本以 `content:` 开头，遇到换行且独占一行的 `/#end` 结束。
-- **转义**：若代码中恰好包含 `/#end`，请在其前加反斜杠 `\/#end`，引擎会自动将其转换为普通文本。
+- **转义**：若代码中恰好包含 `/#end`，请在其前加反斜杠 `\/#end`。
+  - 如果代码里本身就有 `\/#end`，请写成 `\\/#end`。
+  - 缩进不影响转义，去缩进（Dedent）在转义处理之后进行。
 - **Node.js 安全**：`/#nodejs` 块默认被禁用。若需执行，必须在 CLI 加 `--allow-nodejs`。
 
 ### 2. 完整指令字典
@@ -78,3 +80,14 @@ type Selector =
 - `ERR_FILE_NOT_FOUND`：文件不存在。
 - `ERR_SELECTOR_NOT_FOUND`：AST 未找到节点。
 - `ERR_NODEJS_DISABLED`：检测到 `/#nodejs` 但未加 `--allow-nodejs`。
+
+## 六、 .tred/config.json 配置文件
+`tred init` 会在根目录生成此文件，支持以下配置项：
+```json
+{
+  "allowNodejs": false,        // 是否允许 .cst 执行原生 Node 代码（默认 false）
+  "fuzzyThreshold": 0.9,       // 默认模糊匹配阈值
+  "fuzzyMinMargin": 0.05,      // 多候选仲裁的最小分差
+  "exclude": ["**/*.test.ts"]  // 忽略的文件
+}
+```

@@ -18,6 +18,7 @@ npx @rtcn/tred map --dir src
 # 3. 执行 AST 安全替换
 npx @rtcn/tred replace --file src/main.ts --selector '{"kind":"function","functionName":"main"}' --content-file new-main.ts
 ```
+> 💡 注：如果在 `.cst` 中使用了 `/#nodejs`，执行时需加上 `--allow-nodejs` 参数。
 
 ## 💥 为什么需要 tred？
 
@@ -74,7 +75,7 @@ cat ai.patch | tred patch --file src/main.ts --fuzzy --explain
 ## 🛡️ 安全与幂等声明
 - **原子写入**：所有替换底层均采用 `tmp + rename`，断电或中断不会导致文件损坏。
 - **事务回滚**：若 `patch` 或 `split` 触发语法报错，引擎会直接回滚内存中的变更，绝不写入磁盘。
-- **CST 执行权限**：`/#nodejs` 块默认被禁用（防 RCE 注入）。若确需运行，请加 `--allow-nodejs`。
+- **CST 执行权限**：`/#nodejs` 块默认被禁用（防 RCE 注入）。若确需运行，请加 `--allow-nodejs` 或在 `.tred/config.json` 中开启。
 
 ## ⚖️ 与同类工具的对比
 - **jscodeshift / ast-grep**：侧重于 CLI 或单次规则匹配。`tred` 侧重于 AI 工作流，内置了大模型需要的约束（转义、薄壳、仲裁）。

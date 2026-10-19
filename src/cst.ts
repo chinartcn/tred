@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -121,6 +121,18 @@ export function parseCst(source: string): ParsedCst {
 // ==============================================================================
 // 执行器（生成临时 mjs 并运行）
 // ==============================================================================
+
+function readConfigAllowNodejs(): boolean {
+  try {
+    const p = '.tred/config.json';
+    if (existsSync(p)) {
+      const cfg = JSON.parse(readFileSync(p, 'utf-8'));
+      return cfg.allowNodejs === true;
+    }
+  } catch { /* ignore */ }
+  return false;
+}
+
 export async function runCst(filePath: string, options?: { allowNodejs?: boolean }): Promise<void> {
   const source = readFileSync(filePath, 'utf-8');
   let parsed: ParsedCst;
@@ -150,8 +162,9 @@ export async function runCst(filePath: string, options?: { allowNodejs?: boolean
   let script = `import * as tred from ${tredPath};\n\n`;
 
   if (nodeCode) {
-    if (!options?.allowNodejs) {
-      console.error('❌ [安全拦截] 检测到 /#nodejs 块。为防止 RCE，默认禁止执行。请确认脚本安全后，加 --allow-nodejs 重试。');
+    const isAllowed = options?.allowNodejs || readConfigAllowNodejs();
+    if (!isAllowed) {
+      console.error('❌ [安全拦截] 检测到 /#nodejs 块。为防止 RCE，默认禁止执行。请加 --allow-nodejs 或在 .tred/config.json 中设置 { "allowNodejs": true }。');
       process.exit(1);
     }
     script += `// --- User Node.js Code ---\n${nodeCode}\n// -------------------------\n\n`;

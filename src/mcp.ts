@@ -7,6 +7,7 @@ import { splitFile } from './split.js';
 import { applyPatch } from './patch.js';
 import { replace } from './index.js';
 import { analyzeImpact } from './impact.js';
+import { runCst } from './cst.js';
 
 // 🛡️ 全局劫持 console.log，彻底防止底层工具污染 JSON-RPC 的 stdout
 console.log = (...args: any[]) => {
@@ -163,6 +164,32 @@ server.tool(
       return { content: [{ type: "text", text: res }] };
     } catch (e) {
       return { isError: true, content: [{ type: "text", text: `❌ impact 异常: ${e instanceof Error ? e.message : String(e)}` }] };
+    }
+  }
+);
+
+
+server.tool(
+  "tred_run_cst",
+  "执行 .cst (Changes Long Text) 宏脚本。AI 生成脚本后调用此工具执行。",
+  {
+    file: z.string().describe("CST 脚本的路径"),
+    allowNodejs: z.boolean().optional().describe("是否允许执行脚本内的 /#nodejs 块（默认 false，防注入）")
+  },
+  async ({ file, allowNodejs }) => {
+    try {
+      const { spawnSync } = await import('node:child_process');
+      const args = ['dist/cli.js', 'run', file];
+      if (allowNodejs) args.push('--allow-nodejs');
+      const res = spawnSync(process.execPath, args, { encoding: 'utf-8' });
+      
+      if (res.status === 0) {
+        return { content: [{ type: "text", text: "✅ CST 脚本执行成功。\n" + res.stdout }] };
+      } else {
+        return { isError: true, content: [{ type: "text", text: "❌ CST 脚本执行失败：\n" + res.stderr }] };
+      }
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: "❌ 执行异常: " + (e instanceof Error ? e.message : String(e)) }] };
     }
   }
 );

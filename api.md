@@ -42,6 +42,12 @@ interface PatchOptions {
 }
 ```
 
+### `generateMap(dir: string): CodeMap`
+生成全息代码树状图。
+
+### `analyzeImpact(dir: string, target: string): string`
+返回格式化的人类可读报告。
+
 ### `replace(options: ReplaceOptions): Promise<ReplaceResult>`
 ```typescript
 interface ReplaceOptions {
