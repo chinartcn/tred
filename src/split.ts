@@ -453,6 +453,9 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   for (const name of freeIdentifiers) {
     if (fileLocalNames.has(name)) continue;
     if (GLOBALS.has(name)) continue;
+    // P1_4_uppercase_filter: 只报大写开头标识符，避免局部小写变量噪音
+    const firstChar = name.charAt(0);
+    if (!(firstChar >= 'A' && firstChar <= 'Z')) continue;
     warnings.push('impl 引用了未定义标识符: ' + name + '（可能来自 .d.ts 或全局声明，请确认新文件能访问到）');
   }
 
