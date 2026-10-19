@@ -45,7 +45,24 @@ export function parseCst(source: string): ParsedCst {
     // 2. 处理长文本 content 块
     if (state === 'content') {
       if (trimmed === '/#end') {
-        if (currentOp) currentOp.content = currentContent.join('\n');
+        if (currentOp) {
+          const raw = currentContent.join('\n');
+          const cLines = raw.split('\n');
+          // 寻找第一行非空行的缩进作为基准
+          let baseIndent = '';
+          for (const l of cLines) {
+            if (l.trim()) {
+              const m = l.match(/^[ \t]*/);
+              if (m) baseIndent = m[0];
+              break;
+            }
+          }
+          if (baseIndent) {
+            currentOp.content = cLines.map(l => l.startsWith(baseIndent) ? l.slice(baseIndent.length) : l).join('\n');
+          } else {
+            currentOp.content = raw;
+          }
+        }
         currentContent = [];
         state = 'normal';
       } else {
@@ -139,25 +156,29 @@ export async function runCst(filePath: string): Promise<void> {
   script += `async function __main__() {\n`;
   for (const op of ops) {
     if (op.type === 'replace') {
-      script += `  await tred.replace({
+      let selStr = 'undefined';
+      if (op.props.selector) {
+        try { JSON.parse(op.props.selector); selStr = op.props.selector; } catch { throw new Error('replace 的 selector 不是合法 JSON'); }
+      }
+      script += `  const r = await tred.replace({
     file: ${JSON.stringify(op.props.file)},
     anchor: ${JSON.stringify(op.props.anchor || '')},
     fingerprint: ${JSON.stringify(op.props.fingerprint || '')},
     content: ${JSON.stringify(op.content || '')},
     autoInjectAnchor: ${!!op.props.anchor},
-    dryRun: ${op.props.dryRun === 'true'}
-  });\n`;
+    dryRun: ${op.props.dryRun === 'true'},
+    astSelector: ${selStr}
+  });
+  if (r.status === 'failed') { console.error('❌ replace 失败:', r.message); process.exit(1); }\n`;
     } else if (op.type === 'split') {
       const names = (op.props.name || '').split(',').map(s => JSON.stringify(s.trim())).join(', ');
       script += `  const res = tred.splitFile(${JSON.stringify(op.props.file)}, [${names}], ${JSON.stringify(op.props.to)}, ${JSON.stringify(op.props.className || '')});
-    if (!res.ok) throw new Error(res.message);
-  `;
+    if (!res.ok) { console.error('❌ split 失败:', res.message); process.exit(1); }\n`;
     } else if (op.type === 'impact') {
       script += `  console.log(tred.analyzeImpact(${JSON.stringify(op.props.dir || '.')}, ${JSON.stringify(op.props.target)}));\n`;
     } else if (op.type === 'patch') {
-      script += `  const patchRes = tred.applyPatch(${JSON.stringify(op.props.file)}, ${JSON.stringify(op.props.diff || '')}, { fuzzy: true });
-    if (!patchRes.ok) throw new Error(patchRes.message);
-  `;
+      script += `  const patchRes = tred.applyPatch(${JSON.stringify(op.props.file)}, ${JSON.stringify(op.content || '')}, { fuzzy: true });
+    if (!patchRes.ok) { console.error('❌ patch 失败:', patchRes.message); process.exit(1); }\n`;
     }
   }
   script += `}\n\n__main__().catch(e => { console.error('❌ 执行失败:', e.message); process.exit(1); });\n`;

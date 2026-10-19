@@ -531,3 +531,7 @@ export { runOps } from './ops.js';
 
 export { runCst } from './cst.js';
 export type { ParsedCst, CstOp } from './cst.js';
+
+export { applyPatch } from './patch.js';
+
+export { analyzeImpact } from './impact.js';
