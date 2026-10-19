@@ -420,6 +420,20 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
   }
 
   if (targetClass) fileLocalNames.add(targetClass);
+
+  // 收集同文件中的顶层声明（用于识别是否漏拆了依赖）
+  const sameFileTopLevel = new Map<string, boolean>(); // name -> isExported
+  for (const stmt of sf.statements) {
+    if (ts.isImportDeclaration(stmt)) continue;
+    const exported = ts.canHaveModifiers(stmt) && ts.getModifiers(stmt)?.some((m: ts.ModifierLike) => m.kind === ts.SyntaxKind.ExportKeyword) === true;
+    if ((ts.isFunctionDeclaration(stmt) || ts.isClassDeclaration(stmt) || ts.isInterfaceDeclaration(stmt) || ts.isTypeAliasDeclaration(stmt)) && stmt.name) {
+      sameFileTopLevel.set(stmt.name.text, exported);
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const d of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(d.name)) sameFileTopLevel.set(d.name.text, exported);
+      }
+    }
+  }
   const GLOBALS = new Set([
     'window', 'document', 'console', 'globalThis', 'self', 'navigator', 'location',
     'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'queueMicrotask',
@@ -449,13 +463,41 @@ export function splitFile(filePath: string, targets: string[], newFileName: stri
     }
   }
 
+  const needImport: string[] = [];
+  const needRefuse: string[] = [];
+
   for (const name of freeIdentifiers) {
+    if (sameFileTopLevel.has(name)) {
+      if (!targets.includes(name)) {
+        if (sameFileTopLevel.get(name)) {
+          needImport.push(name);
+        } else {
+          needRefuse.push(name);
+        }
+      }
+      continue;
+    }
     if (fileLocalNames.has(name)) continue;
     if (GLOBALS.has(name)) continue;
-    // P1_4_uppercase_filter: 只报大写开头标识符，避免局部小写变量噪音
+    
+    // 未知全局依赖（大写开头才警告）
     const firstChar = name.charAt(0);
-    if (!(firstChar >= 'A' && firstChar <= 'Z')) continue;
-    warnings.push('impl 引用了未定义标识符: ' + name + '（可能来自 .d.ts 或全局声明，请确认新文件能访问到）');
+    const isUpper = firstChar >= 'A' && firstChar <= 'Z';
+    if (isUpper) {
+       warnings.push('impl 引用了未定义标识符: ' + name + '（可能来自 .d.ts 或全局声明，请确认新文件能访问到）');
+    }
+  }
+
+  if (needRefuse.length > 0) {
+    return {
+      ok: false,
+      message: 'impl 引用了未导出的顶层声明 ' + needRefuse.join(', ') + '（同文件，非模块 import）。\nimpl 搬走后无法访问它。请给原文件加 export，或把它们一起拆到新文件（用 --name 指定）。'
+    };
+  }
+
+  if (needImport.length > 0) {
+    const origModuleName = './' + basename(filePath).replace(/\.ts$/, '.js');
+    copiedImports.push('import { ' + needImport.join(', ') + ' } from ' + JSON.stringify(origModuleName) + ';');
   }
 
   // ═══════════════════════════════════════════════════════════
