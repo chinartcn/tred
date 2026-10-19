@@ -4,6 +4,7 @@ import { getSimilarity } from './fuzzy.js';
 import { tokenize, calcBM25 } from './bm25.js';
 import { getAstShape, lcsRatio } from './ast-shape.js';
 import { minHashJaccard } from './minhash.js';
+import { calcHybridSimilarity } from './hybrid.js';
 import { getEmbedding, getCache, saveCache } from './embedding.js';
 import { buildAndSearch } from './vector-index.js';
 
@@ -274,9 +275,6 @@ export async function applyPatch(
 
       // 🚀 v4.0 混合算法预计算
       const hunkText = oldBlock.join('\n');
-      const hunkTokens = tokenize(hunkText);
-      const hunkShape = getAstShape(hunkText);
-      const avgLen = hunkTokens.length;
 
       for (let i = startSearch; i <= endSearch; i++) {
         const windowTokenSet = new Set<string>();
@@ -290,21 +288,10 @@ export async function applyPatch(
 
         const candLines = currentLines.slice(i, i + oldBlock.length);
         const candText = candLines.join('\n');
-        const candTokens = tokenize(candText);
 
-        // Layer 1: BM25 粗排 (0~1)
-        const bm25Raw = calcBM25(hunkTokens, candTokens, avgLen);
-        const bm25Score = Math.min(1, bm25Raw / (hunkTokens.length || 1));
-
-        // Layer 2: AST Shape LCS (0~1)
-        const candShape = getAstShape(candText);
-        const shapeScore = lcsRatio(hunkShape, candShape);
-
-        // Layer 2.5: MinHash Jaccard (0~1)
-        const hashScore = minHashJaccard(hunkTokens, candTokens);
-
-        // 三轨融合 (BM25 0.3, AST Shape 0.4, MinHash 0.3)
-        let finalScore = bm25Score * 0.3 + shapeScore * 0.4 + hashScore * 0.3;
+        // 🚀 调用 v4.0 公共 API 进行混合打分
+        const detail = calcHybridSimilarity(hunkText, candText);
+        let finalScore = detail.finalScore;
 
         // 原有 P1 的稀有词加权兜底
         let keyLineCount = 0, keyLineHitCount = 0;

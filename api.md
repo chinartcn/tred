@@ -30,6 +30,37 @@
 ---
 
 ## 二、 TypeScript API
+### `calcHybridSimilarity(codeA: string, codeB: string): HybridScoreDetail`
+计算两段代码文本的结构与语义相似度（0~1）。
+包含 AST 结构保底机制：如果语法骨架高度一致，即使变量名全部被修改，也能获得极高的评分。
+- 返回值：
+
+    {
+      bm25: number;
+      astShape: number;
+      minHash: number;
+      finalScore: number;
+    }
+
+### `searchFuzzy(dir: string, query: string, options?: FuzzySearchOptions): GrepResult[]`
+使用 v4.0 混合算法（BM25 + AST + Jaro-Winkler）在指定目录进行语义级代码搜索。
+- 支持自然语言意图搜索（如"处理支付"）和标识符变异搜索（如搜 `fetchUser` 命中 `getUserData`）。
+- 可直接用于开发编辑器插件、代码审计工具。
+
+    interface FuzzySearchOptions {
+      ignoreDirs?: Set<string>;
+      extensions?: RegExp;
+      maxResults?: number;
+    }
+
+    interface GrepResult {
+      file: string;
+      line: number;
+      context: string;
+      text: string;
+      score: number;
+    }
+
 
 ### `runCst(filePath: string, options?: { allowNodejs?: boolean })`
 执行 CST 脚本。

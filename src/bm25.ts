@@ -1,6 +1,35 @@
 export function tokenize(text: string): string[] {
-  // 提取字母、数字、下划线和常见符号构成的结构 token
-  return text.match(/[a-zA-Z0-9_]{2,}|[(){}\[\];,.=+\-*/<>!&|]+/g) || [];
+  // 分离：连续的英数字下划线 / 连续的结构符号 / 连续的中文
+  const rawTokens = text.match(/[a-zA-Z0-9_]+|[(){}\[\];,.=+\-*/<>!&|]+|[\u4e00-\u9fa5]+/g) || [];
+  const result: string[] = [];
+  
+  for (const t of rawTokens) {
+    if (/^[(){}\[\];,.=+\-*/<>!&|]+$/.test(t)) {
+      result.push(t);
+      continue;
+    }
+    
+    if (/^[\u4e00-\u9fa5]+$/.test(t)) {
+      // 🚀 中文使用 Bi-gram 切词（如 "校验密码" -> "校验", "验密", "密码"）
+      if (t.length === 1) {
+        result.push(t);
+      } else {
+        for (let i = 0; i < t.length - 1; i++) {
+          result.push(t.slice(i, i + 2));
+        }
+      }
+      continue;
+    }
+
+    // 拆分 camelCase 和 snake_case
+    const parts = t.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[\s_\-]+/);
+    for (const p of parts) {
+      if (p.length >= 2) {
+        result.push(p.toLowerCase());
+      }
+    }
+  }
+  return result;
 }
 
 export function nGrams(tokens: string[], n: number): string[] {

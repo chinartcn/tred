@@ -1,3 +1,4 @@
+import { getPlugins } from './plugin.js';
 import { readFileSync, writeFileSync, unlinkSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -115,10 +116,20 @@ export function parseCst(source: string): ParsedCst {
     throw new Error(`CST 文件解析失败：存在未闭合的块 (${state})。请检查 /#end 或 /#nodejs.end 是否遗漏。`);
   }
 
-  return {
+  let parsed = {
     nodeCode: nodeBlocks.join('\n\n'),
     ops
   };
+
+  // 触发插件钩子
+  for (const plugin of getPlugins()) {
+    if (plugin.onCstParsed) {
+      const modified = plugin.onCstParsed(parsed);
+      if (modified) parsed = modified;
+    }
+  }
+
+  return parsed;
 }
 
 // ==============================================================================

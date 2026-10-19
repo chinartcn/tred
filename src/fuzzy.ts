@@ -90,6 +90,14 @@ export function getSimilarity(query: string, target: string): number {
   const lev = levenshteinRatio(query.toLowerCase(), target.toLowerCase());
   const jac = jaccard(qWords, tWords);
   
-  // 标识符级融合：前缀敏感 + 字符纠错 + 词干分解
-  return jw * 0.5 + lev * 0.3 + jac * 0.2;
+  // 标识符级融合：如果共享了很长的词（如 credentials），给予更高的权重
+  let commonLongWordBonus = 0;
+  for (const qw of qWords) {
+    for (const tw of tWords) {
+      if (qw === tw && qw.length >= 4) commonLongWordBonus += 0.15;
+    }
+  }
+  
+  const finalScore = jw * 0.4 + lev * 0.3 + jac * 0.3 + commonLongWordBonus;
+  return Math.min(1, finalScore);
 }

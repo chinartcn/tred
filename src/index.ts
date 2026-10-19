@@ -535,3 +535,15 @@ export type { ParsedCst, CstOp } from './cst.js';
 export { applyPatch } from './patch.js';
 
 export { analyzeImpact } from './impact.js';
+
+// v4.1.1 插件系统开放
+export * from './plugin.js';
+export { tokenize, calcBM25 } from './bm25.js';
+export { getAstShape, lcsRatio } from './ast-shape.js';
+export { minHashJaccard } from './minhash.js';
+
+export { searchFuzzy } from './grep.js';
+export type { GrepResult, FuzzySearchOptions } from './grep.js';
+
+export { calcHybridSimilarity } from './hybrid.js';
+export type { HybridScoreDetail } from './hybrid.js';

@@ -15,6 +15,10 @@ import { splitFile } from './split.js';
 import { chopFile } from './chopper.js';
 import { applyPatch } from './patch.js';
 import { runCst } from './cst.js';
+import { initPluginContext } from './plugin.js';
+import { tokenize } from './bm25.js';
+import { getAstShape } from './ast-shape.js';
+import { minHashJaccard } from './minhash.js';
 import { startMcpServer } from './mcp.js';
 
 const __pkgDir = _dirname(fileURLToPath(import.meta.url));
@@ -253,7 +257,8 @@ async function cmdGrep(flags: Record<string, string | true | string[]>, position
   const dir = typeof flags.dir === 'string' ? flags.dir : '.';
   const useAst = Boolean(flags.ast);
   const useHtml = Boolean(flags.html);
-  grepDir(dir, pattern, useAst, useHtml);
+  const useFuzzy = Boolean(flags.fuzzy);
+  grepDir(dir, pattern, useAst, useHtml, useFuzzy);
   return 0;
 }
 
@@ -1105,6 +1110,8 @@ async function cmdServe(flags: Record<string, string | true>): Promise<number> {
 
 
 export async function cliMain(argv: string[]): Promise<void> {
+  initPluginContext({ tokenize, getAstShape, minHashJaccard });
+
   const parsed = parseArgs(argv);
   const flags = parsed.flags;
   const positionals = parsed.positionals;
