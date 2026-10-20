@@ -1,8 +1,8 @@
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdtempSync, mkdirSync, rmSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve, relative, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
+
 import { getPlugins } from './plugin.js';
-import { readFileSync, writeFileSync, mkdtempSync, existsSync, mkdirSync, rmSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 
 export interface CstOp {
   type: 'replace' | 'split' | 'patch' | 'impact';
@@ -172,6 +172,31 @@ export async function runCst(filePath: string, options?: { allowNodejs?: boolean
   const tmpDir = mkdtempSync(join(tmpBase, 'cst-'));
   const tmpFile = join(tmpDir, 'run.mjs');
 
+  // 🚀 v4.4.0 安全快照机制
+  const snapshotDir = join(process.cwd(), '.tred', 'snapshots');
+  const runId = new Date().toISOString().replace(/[:.]/g, '-');
+  const currentSnapshotDir = join(snapshotDir, runId);
+  const fileBackups = new Map<string, string | null>(); // 路径 -> 原内容(null表示原本不存在)
+
+  // 收集所有涉及的文件
+  const filesToSnapshot = new Set<string>();
+  for (const op of ops) {
+    if (op.props.file) filesToSnapshot.add(resolve(process.cwd(), op.props.file));
+    if (op.props.to) filesToSnapshot.add(resolve(process.cwd(), op.props.to));
+  }
+
+  mkdirSync(currentSnapshotDir, { recursive: true });
+  for (const filePath of filesToSnapshot) {
+    if (existsSync(filePath)) {
+      const content = readFileSync(filePath, 'utf-8');
+      fileBackups.set(filePath, content);
+      const rel = relative(process.cwd(), filePath).replace(/\\/g, '/').replace(/\.\.\//g, '_');
+      writeFileSync(join(currentSnapshotDir, rel), content, 'utf-8');
+    } else {
+      fileBackups.set(filePath, null);
+    }
+  }
+
   // 根据当前文件（dist/cst.js）的物理位置，直接推导同级的 dist/index.js
   let tredPath = '"@rtcn/tred"';
   try {
@@ -237,15 +262,26 @@ export async function runCst(filePath: string, options?: { allowNodejs?: boolean
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [tmpFile], { stdio: 'inherit', cwd: process.cwd() });
     if (res.status !== 0) {
+      console.error('\n⚠️ [tred] 脚本执行失败，正在触发事务回滚...');
+      for (const [filePath, origContent] of fileBackups.entries()) {
+        if (origContent === null) {
+          if (existsSync(filePath)) rmSync(filePath, { force: true });
+          console.error('  🧹 删除新建文件: ' + relative(process.cwd(), filePath));
+        } else {
+          writeFileSync(filePath, origContent, 'utf-8');
+          console.error('  ♻️  恢复文件: ' + relative(process.cwd(), filePath));
+        }
+      }
+      console.error('✅ 回滚完成，代码库已恢复至执行前状态。');
       process.exit(res.status || 1);
     }
   } finally {
     try {
       rmSync(tmpDir, { recursive: true, force: true });
-      // 如果清理后 .tred-tmp 空了，顺手把它也删了
       if (existsSync(tmpBase) && readdirSync(tmpBase).length === 0) {
         rmSync(tmpBase, { recursive: true, force: true });
       }
     } catch { /* ignore */ }
   }
+  console.log('\n💾 [tred] 成功执行！本次操作快照已保存至 .tred/snapshots/' + runId);
 }

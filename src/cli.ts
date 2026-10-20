@@ -1,6 +1,6 @@
 import type { SnippetSelector } from './types.js';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, cpSync, rmSync } from 'node:fs';
 import { runOps } from './ops.js';
 import { annotateDir, annotateFile, buildOutline, diffAnchor, diffDir, fixDir, makeFingerprint, replace, replaceMany, verifyDir, renderVerifyMarkdown, renderFixMarkdown, diffDirGit, renderDiffDirMarkdown, renderAnnotateDirMarkdown, doctor, buildBaseline, loadBaseline, saveBaseline, filterIssuesByBaseline, init, renderGithubAnnotations, renderFixGithubAnnotations, watchDir, getDiffLines, renderSarif, renderHtml, serveHtml, tryOpenBrowser } from './index.js';
 import type { AnnotateDirResult, AnnotateResult, AstSelector, DiffDirResult, FixReport, Formatter, OutlineNode, ReplaceOptions, VerifyReport, DoctorReport, InitResult, BaselineFile } from './types.js';
@@ -1151,6 +1151,7 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (cmd === 'serve')        { process.exit(await cmdServe(flags)); }
   
   // v1.3.0: ops 声明式执行
+  if (cmd === 'undo')         { process.exit(await cmdUndo()); }
   if (cmd === 'commit')       { process.exit(await cmdCommit(flags)); }
   if (cmd === 'strip')        { process.exit(await cmdStrip(flags)); }
   if (cmd === 'ops' || (cmd && cmd.endsWith('.json'))) {
@@ -1173,6 +1174,30 @@ if (__isCliEntry) {
   });
 }
 
+
+
+async function cmdUndo(): Promise<number> {
+  const snapshotDir = join(process.cwd(), '.tred', 'snapshots');
+  if (!existsSync(snapshotDir)) {
+    die('没有找到任何操作快照（.tred/snapshots 不存在）');
+  }
+  const snapshots = readdirSync(snapshotDir).sort();
+  if (snapshots.length === 0) {
+    die('没有可撤销的快照');
+  }
+  const latest = snapshots[snapshots.length - 1];
+  const latestPath = join(snapshotDir, latest);
+
+  console.log('[tred] 正在从快照回滚: ' + latest);
+  // 把快照里的文件覆盖回项目
+  cpSync(latestPath, process.cwd(), { recursive: true });
+  
+  // 删除已撤销的快照
+  rmSync(latestPath, { recursive: true, force: true });
+
+  console.log('✅ 撤销成功，代码已恢复到执行 "' + latest + '" 前的状态。');
+  return 0;
+}
 
 async function cmdCommit(flags: Record<string, string | true | string[]>): Promise<number> {
   const msg = typeof flags.message === 'string' ? flags.message : 'tred: auto commit';
