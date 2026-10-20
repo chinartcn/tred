@@ -80,3 +80,6 @@ p2-*.sh
 add-smoke-cases.mjs
 package-lock.json
 package-lock.json
+
+# tred 事务快照
+.tred/snapshots/

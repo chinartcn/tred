@@ -9,7 +9,9 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
 
   if (!extractor) {
     try {
-      const { pipeline, env } = await import('@huggingface/transformers');
+      const modName = '@huggingface/transformers';
+      // @ts-ignore - 动态导入，允许用户不安装此可选依赖
+      const { pipeline, env } = await import(modName);
       
       // 🚀 强制 transformers 使用 WASM (onnxruntime-web)
       if (env?.backends?.onnx) {
