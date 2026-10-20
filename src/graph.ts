@@ -3,9 +3,9 @@ import { join, relative, dirname } from 'node:path';
 import ts from 'typescript';
 
 export function generateMermaidGraph(dir: string): string {
-  const ignore = new Set(['node_modules', '.git', 'dist', '.tred', '.tred-tmp']);
-  const edges: string[] = [];
+  const ignore = new Set(['node_modules', '.git', 'dist', '.tred', '.tred-tmp', 'chunks']);
   const files: string[] = [];
+  const rawEdges: { from: string; to: string }[] = [];
 
   function walk(d: string) {
     let entries;
@@ -13,7 +13,7 @@ export function generateMermaidGraph(dir: string): string {
     for (const e of entries) {
       if (e.isDirectory()) {
         if (!ignore.has(e.name)) walk(join(d, e.name));
-      } else if (e.isFile() && /\.(ts|tsx|js|jsx)$/.test(e.name)) {
+      } else if (e.isFile() && /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(e.name)) {
         const full = join(d, e.name);
         const rel = relative(dir, full).replace(/\\/g, '/');
         files.push(rel);
@@ -26,8 +26,7 @@ export function generateMermaidGraph(dir: string): string {
             const spec = node.moduleSpecifier.getText(sf).replace(/['"]/g, '');
             if (spec.startsWith('.')) {
               const target = relative(dir, join(dirname(full), spec)).replace(/\\/g, '/');
-              const targetWithExt = files.find(f => f.startsWith(target)) || target + '.ts';
-              edges.push(`  "${rel}" --> "${targetWithExt}"`);
+              rawEdges.push({ from: rel, to: target });
             }
           }
         });
@@ -36,8 +35,34 @@ export function generateMermaidGraph(dir: string): string {
   }
   walk(dir);
 
-  const nodes = files.map(f => `  "${f}"["${f.split('/').pop()}"]`).join('\n');
-  return `\`\`\`mermaid\ngraph TD\n${nodes}\n${edges.join('\n')}\n\`\`\``;
+  // 解决 target 没写扩展名的问题
+  const resolvedEdges: { from: string; to: string }[] = [];
+  for (const edge of rawEdges) {
+    let target = files.find(f => f === edge.to);
+    if (!target) target = files.find(f => f.startsWith(edge.to + '.') || f.startsWith(edge.to + '/'));
+    if (target) resolvedEdges.push({ from: edge.from, to: target });
+  }
+
+  // 🚀 核心修复：给每个文件分配一个安全的 ID（如 n0, n1），彻底解决特殊字符导致 Mermaid 语法错误的问题
+  const idMap = new Map<string, string>();
+  files.forEach((f, i) => idMap.set(f, 'n' + i));
+
+  const nodeLines = files.map(f => {
+    const label = f.split('/').pop() || f;
+    return `  ${idMap.get(f)}["${label}"]`;
+  });
+
+  const edgeLines = resolvedEdges.map(e => {
+    return `  ${idMap.get(e.from)} --> ${idMap.get(e.to)}`;
+  });
+
+  return [
+    '```mermaid',
+    'graph TD',
+    ...nodeLines,
+    ...edgeLines,
+    '```'
+  ].join('\n');
 }
 
 export function generateHtmlGraph(dir: string): string {
@@ -47,8 +72,6 @@ export function generateHtmlGraph(dir: string): string {
   lines.pop();   // 去掉 ```
   const mermaidCode = lines.join('\n');
   
-  // 1. 使用 bootcdn 国内极速镜像
-  // 2. 增加 if (typeof mermaid !== 'undefined') 兜底，防止断网时显示纯文本
   const script1 = '<script src="https://cdn.bootcdn.net/ajax/libs/mermaid/10.9.0/mermaid.min.js"><\/script>';
   const script2 = '<script>if(typeof mermaid!=="undefined"){mermaid.initialize({startOnLoad:true,theme:"default"});}else{document.querySelector(".container").innerHTML="<h2 style=\'color:red\'>⚠️ Mermaid 引擎加载失败，请检查网络</h2>";}<\/script>';
 
