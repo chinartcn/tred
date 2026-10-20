@@ -1185,12 +1185,32 @@ if (__isCliEntry) {
 
 
 
+
+async function startHttpView(html: string, title: string): Promise<void> {
+  const handle = await serveHtml(() => html, { port: 0 });
+  console.log('\n🌐 HTTP 预览已启动: ' + handle.url);
+  const opened = tryOpenBrowser(handle.url);
+  if (!opened) console.log('  (请手动在浏览器中打开上述地址)');
+  console.log('  (按 Ctrl+C 停止预览服务并退出)');
+  
+  return new Promise<void>((resolve) => {
+    process.on('SIGINT', () => {
+      console.log('\n[tred] 预览服务已停止');
+      handle.close();
+      resolve();
+    });
+  });
+}
+
 async function cmdGraph(flags: Record<string, string | true>): Promise<number> {
   const dir = typeof flags.dir === 'string' ? flags.dir : '.';
   if (flags.html) {
     const html = generateHtmlGraph(dir);
     writeFileSync('tred-graph.html', html, 'utf-8');
-    console.log('✅ 架构图已生成: tred-graph.html (用浏览器打开即可查看)');
+    console.log('✅ 架构图已生成: tred-graph.html');
+    if (flags.httpview) {
+      await startHttpView(html, 'tred 架构图');
+    }
     return 0;
   }
   const graph = generateMermaidGraph(dir);
@@ -1260,6 +1280,9 @@ async function cmdUndo(flags: Record<string, string | true>): Promise<number> {
             '</body></html>';
           writeFileSync('tred-undo-preview.html', html, 'utf-8');
           console.log('✅ 撤销预览已生成: tred-undo-preview.html');
+          if (flags.httpview) {
+            await startHttpView(html, '撤销预览');
+          }
         } else {
           console.log(diff);
         }
