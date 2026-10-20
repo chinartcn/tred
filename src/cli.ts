@@ -1,7 +1,7 @@
 import { atomicWrite } from './atomic.js';
 import type { SnippetSelector } from './types.js';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, cpSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, cpSync, rmSync , writeFileSync } from 'node:fs';
 import { runOps } from './ops.js';
 import { annotateDir, annotateFile, buildOutline, diffAnchor, diffDir, fixDir, makeFingerprint, replace, replaceMany, verifyDir, renderVerifyMarkdown, renderFixMarkdown, diffDirGit, renderDiffDirMarkdown, renderAnnotateDirMarkdown, doctor, buildBaseline, loadBaseline, saveBaseline, filterIssuesByBaseline, init, renderGithubAnnotations, renderFixGithubAnnotations, watchDir, getDiffLines, renderSarif, renderHtml, serveHtml, tryOpenBrowser } from './index.js';
 import type { AnnotateDirResult, AnnotateResult, AstSelector, DiffDirResult, FixReport, Formatter, OutlineNode, ReplaceOptions, VerifyReport, DoctorReport, InitResult, BaselineFile } from './types.js';
@@ -16,7 +16,7 @@ import { splitFile } from './split.js';
 import { chopFile } from './chopper.js';
 import { applyPatch } from './patch.js';
 import { runCst } from './cst.js';
-import { generateMermaidGraph } from './graph.js';
+import { generateMermaidGraph, generateHtmlGraph } from './graph.js';
 import { unifiedDiff } from './diff.js';
 import { createSkeleton } from './create.js';
 import { findAnchor } from './anchor.js';
@@ -1158,7 +1158,7 @@ export async function cliMain(argv: string[]): Promise<void> {
   // v1.3.0: ops 声明式执行
   if (cmd === 'graph')        { process.exit(await cmdGraph(flags)); }
   if (cmd === 'create')       { process.exit(await cmdCreate(flags)); }
-  if (cmd === 'undo')         { process.exit(await cmdUndo(flags)); }
+  if (cmd === 'undo')         { process.exit(await cmdUndo(flags)); } // 支持 --preview 和 --html
   if (cmd === 'commit')       { process.exit(await cmdCommit(flags)); }
   if (cmd === 'strip')        { process.exit(await cmdStrip(flags)); }
   if (cmd === 'ops' || (cmd && cmd.endsWith('.json'))) {
@@ -1187,6 +1187,12 @@ if (__isCliEntry) {
 
 async function cmdGraph(flags: Record<string, string | true>): Promise<number> {
   const dir = typeof flags.dir === 'string' ? flags.dir : '.';
+  if (flags.html) {
+    const html = generateHtmlGraph(dir);
+    writeFileSync('tred-graph.html', html, 'utf-8');
+    console.log('✅ 架构图已生成: tred-graph.html (用浏览器打开即可查看)');
+    return 0;
+  }
   const graph = generateMermaidGraph(dir);
   if (flags.json) {
     console.log(JSON.stringify({ mermaid: graph }));
@@ -1237,7 +1243,26 @@ async function cmdUndo(flags: Record<string, string | true>): Promise<number> {
       if (existsSync(snapFile)) {
         const a = readFileSync(flags.file, 'utf-8');
         const b = readFileSync(snapFile, 'utf-8');
-        console.log(unifiedDiff(a, b, 'current/' + flags.file, 'snapshot/' + flags.file));
+        const diff = unifiedDiff(a, b, 'current/' + flags.file, 'snapshot/' + flags.file);
+        
+        if (flags.html) {
+          // 简单的 HTML 高亮替换
+          const coloredDiff = diff.split('\n').map(line => {
+            if (line.startsWith('+')) return '<div style="background:#e6ffec;color:#24292f;">' + line.replace(/</g, '&lt;') + '</div>';
+            if (line.startsWith('-')) return '<div style="background:#ffebe9;color:#24292f;">' + line.replace(/</g, '&lt;') + '</div>';
+            if (line.startsWith('@@')) return '<div style="color:#0550ae;background:#ddf4ff;margin:10px 0;">' + line.replace(/</g, '&lt;') + '</div>';
+            return '<div>' + line.replace(/</g, '&lt;') + '</div>';
+          }).join('');
+          
+          const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>tred Undo Preview</title></head><body style="font-family:monospace;padding:20px;background:#f6f8fa;">' +
+            '<h3>撤销预览: ' + flags.file + '</h3>' +
+            '<div style="background:#fff;border:1px solid #ccc;padding:10px;border-radius:6px;overflow-x:auto;">' + coloredDiff + '</div>' +
+            '</body></html>';
+          writeFileSync('tred-undo-preview.html', html, 'utf-8');
+          console.log('✅ 撤销预览已生成: tred-undo-preview.html');
+        } else {
+          console.log(diff);
+        }
       }
     }
     return 0;
