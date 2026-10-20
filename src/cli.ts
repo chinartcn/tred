@@ -1235,8 +1235,21 @@ async function cmdUndo(flags: Record<string, string | true>): Promise<number> {
   const snapLines = snapContent.split('\n');
   const currLines = currentContent.split('\n');
 
+  // 提取快照里的完整锚点块
   const restoredBlockText = snapLines.slice(snapBlock.startLine, snapBlock.endLine + 1).join('\n');
-  const newContent = currLines.slice(0, currBlock.startLine).join('\n') + '\n' + restoredBlockText + '\n' + currLines.slice(currBlock.endLine + 1).join('\n');
+  
+  // 提取当前文件里的头部和尾部，去除空行干扰
+  const headLines = currLines.slice(0, currBlock.startLine);
+  const tailLines = currLines.slice(currBlock.endLine + 1);
+
+  // 过滤掉尾部可能残留的、刚刚被替换掉的同名锚点 END 行（清理脏数据）
+  const cleanedTail = tailLines.filter((line, idx) => {
+    if (idx === 0 && line.trim() === '// @TRED_END: ' + anchorName) return false;
+    return true;
+  });
+
+  let newContent = headLines.join('\n') + '\n' + restoredBlockText + '\n' + cleanedTail.join('\n');
+  newContent = newContent.replace(/\n{3,}/g, '\n\n').trim() + '\n';
 
   atomicWrite(filePath, newContent);
   console.log('✅ 成功局部回滚锚点 "' + anchorName + '" 到状态: ' + latest);

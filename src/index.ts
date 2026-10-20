@@ -182,8 +182,24 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
   } else if (opts.anchor) {
     newBlock = buildBlock(opts.anchor, fingerprint, content, indent);
   } else {
-    // 核心修复：判断是否在行首，如果在行首，才统一加缩进，否则首行保持原样
-    const lineStartPos = original.lastIndexOf('\n', range.start) + 1;
+    // 如果使用 AST 替换，且 content 里包含了 @TRED 注释，自动剥离，防止嵌套污染
+    if (opts.astSelector) {
+      const normLines = normalized.split('\n');
+      const cleanedLines = normLines.filter(l => !/^\s*\/\/\s*@TRED_(START|END):/.test(l));
+      const cleanedContent = cleanedLines.join('\n');
+      const lineStartPos = original.lastIndexOf('\n', range.start) + 1;
+      const beforeNode = original.slice(lineStartPos, range.start);
+      const isAtLineStart = beforeNode.trim().length === 0;
+      
+      if (isAtLineStart) {
+        newBlock = indentLines(cleanedContent, indent);
+      } else {
+        const lines = cleanedContent.split('\n');
+        newBlock = lines[0] + lines.slice(1).map((l: string) => l ? indent + l : l).join('\n');
+      }
+    } else {
+      // 核心修复：判断是否在行首，如果在行首，才统一加缩进，否则首行保持原样
+      const lineStartPos = original.lastIndexOf('\n', range.start) + 1;
     const beforeNode = original.slice(lineStartPos, range.start);
     const isAtLineStart = beforeNode.trim().length === 0;
     
@@ -192,6 +208,7 @@ async function computeReplace(original: string, opts: ReplaceOptions): Promise<C
     } else {
       const lines = normalized.split('\n');
       newBlock = lines[0] + lines.slice(1).map((l: string) => l ? indent + l : l).join('\n');
+    }
     }
   }
 
