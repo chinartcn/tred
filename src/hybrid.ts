@@ -40,6 +40,11 @@ export function calcHybridSimilarity(hunkText: string, candidateText: string, op
     return { bm25: 0, astShape: 0, minHash: 0, finalScore: 0 };
   }
 
+  // 🚀 绝对重合短路：如果文本完全一致，直接给满分，避免被 BM25 的数学上限拖累
+  if (hunkText === candidateText) {
+    return { bm25: 1, astShape: 1, minHash: 1, finalScore: 1 };
+  }
+
   const hunkTokens = tokenize(hunkText);
   const candTokens = tokenize(candidateText);
   const avgLen = hunkTokens.length || 1;
