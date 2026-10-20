@@ -1,6 +1,5 @@
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { join, relative, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative, dirname } from 'node:path';
 import ts from 'typescript';
 
 export function generateMermaidGraph(dir: string): string {
@@ -36,7 +35,6 @@ export function generateMermaidGraph(dir: string): string {
   }
   walk(dir);
 
-  // 🚀 核心修复：兼容 TS 里的 .js 后缀和省略后缀的情况
   const resolvedEdges: { from: string; to: string }[] = [];
   for (const edge of rawEdges) {
     let target = files.find(f => f === edge.to);
@@ -53,7 +51,6 @@ export function generateMermaidGraph(dir: string): string {
     }
   }
 
-  // 映射安全 ID
   const idMap = new Map<string, string>();
   files.forEach((f, i) => idMap.set(f, 'n' + i));
 
@@ -82,32 +79,18 @@ export function generateHtmlGraph(dir: string, mermaidJsCode?: string): string {
   lines.pop();
   const mermaidCode = lines.join('\n');
   
-  // 🚀 读取本地 mermaid.min.js
-  let mermaidJs = '';
-  try {
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    // 可能存在于项目根目录，也可能存在于 dist 的上一级
-    const paths = [
-      join(process.cwd(), 'mermaid.min.js'),
-      join(__dirname, '../mermaid.min.js'),
-      join(__dirname, '../../mermaid.min.js')
-    ];
-    for (const p of paths) {
-      if (existsSync(p)) {
-        mermaidJs = readFileSync(p, 'utf-8');
-        break;
-      }
-    }
-  } catch { /* ignore */ }
+  let script1 = '';
+  if (mermaidJsCode && mermaidJsCode.length > 100) {
+    // 核心修复：防止引擎代码里的 </script> 截断 HTML
+    const safeCode = mermaidJsCode.replace(/<\/script>/g, '<\\/script>');
+    script1 = `<script>\n${safeCode}\n</script>`;
+  } else {
+    script1 = '<script src="https://cdn.bootcdn.net/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>';
+  }
 
-  // 如果没找到本地库，降级用 CDN
-  const script1 = mermaidJs 
-    ? `<script>\n${mermaidJs}\n<\/script>`
-    : '<script src="https://cdn.bootcdn.net/ajax/libs/mermaid/10.9.0/mermaid.min.js"><\/script>';
+  const script2 = '<script>if(typeof mermaid!=="undefined"){mermaid.initialize({startOnLoad:true,theme:"default"});}else{document.querySelector(".container").innerHTML="<h2 style=\'color:red\'>⚠️ Mermaid 引擎加载失败</h2>";}</script>';
 
-  const script2 = '<script>if(typeof mermaid!=="undefined"){mermaid.initialize({startOnLoad:true,theme:"default"});}else{document.querySelector(".container").innerHTML="<h2 style=\'color:red\'>⚠️ Mermaid 引擎加载失败</h2>";}<\/script>';
-
-  const html = [
+  return [
     '<!DOCTYPE html>',
     '<html lang="zh-CN">',
     '<head>',
@@ -133,6 +116,4 @@ export function generateHtmlGraph(dir: string, mermaidJsCode?: string): string {
     '</body>',
     '</html>'
   ].join('\n');
-
-  return html;
 }
