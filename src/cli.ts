@@ -1245,9 +1245,13 @@ async function ensureMermaid(): Promise<string | undefined> {
 
 async function cmdGraph(flags: Record<string, string | true>): Promise<number> {
   const dir = typeof flags.dir === 'string' ? flags.dir : '.';
+  const view = (typeof flags.view === 'string' && ['flat', 'dir'].includes(flags.view)) 
+    ? flags.view as 'flat' | 'dir' 
+    : 'flat';
+
   if (flags.html) {
     const mermaidCode = await ensureMermaid();
-    const html = generateHtmlGraph(dir, mermaidCode);
+    const html = generateHtmlGraph(dir, mermaidCode, view);
     writeFileSync('tred-graph.html', html, 'utf-8');
     console.log('✅ 架构图已生成: tred-graph.html');
     if (flags.httpview) {
@@ -1255,7 +1259,7 @@ async function cmdGraph(flags: Record<string, string | true>): Promise<number> {
     }
     return 0;
   }
-  const graph = generateMermaidGraph(dir);
+  const graph = generateMermaidGraph(dir, view);
   if (flags.json) {
     console.log(JSON.stringify({ mermaid: graph }));
   } else {

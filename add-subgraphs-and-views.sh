@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+
+echo "=== 1. 彻底重写 graph.ts，支持多种视图与子图分组 ==="
+cat > src/graph.ts <<'TS_EOF'
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative, dirname } from 'node:path';
+import ts from 'typescript';
+
+export type GraphView = 'flat' | 'dir';
+
+export function generateMermaidGraph(dir: string, view: GraphView = 'flat'): string {
+  const ignore = new Set(['node_modules', '.git', 'dist', '.tred', '.tred-tmp', 'chunks']);
+  const files: string[] = [];
+  const rawEdges: { from: string; to: string }[] = [];
+
+  function walk(d: string) {
+    let entries;
+    try { entries = readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        if (!ignore.has(e.name)) walk(join(d, e.name));
+      } else if (e.isFile() && /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(e.name)) {
+        const full = join(d, e.name);
+        const rel = relative(dir, full).replace(/\\/g, '/');
+        files.push(rel);
+        
+        const source = readFileSync(full, 'utf-8');
+        const sf = ts.createSourceFile(full, source, ts.ScriptTarget.Latest, true);
+        
+        sf.forEachChild(node => {
+          if (ts.isImportDeclaration(node)) {
+            const spec = node.moduleSpecifier.getText(sf).replace(/['"]/g, '');
+            if (spec.startsWith('.')) {
+              const target = relative(dir, join(dirname(full), spec)).replace(/\\/g, '/');
+              rawEdges.push({ from: rel, to: target });
+            }
+          }
+        });
+      }
+    }
+  }
+  walk(dir);
+
+  const resolvedEdges: { from: string, to: string }[] = [];
+  for (const edge of rawEdges) {
+    let target = files.find(f => f === edge.to);
+    if (!target) {
+      const noExt = edge.to.replace(/\.js$/, '');
+      target = files.find(f => 
+        f === noExt + '.ts' || f === noExt + '.tsx' || 
+        f === noExt + '.js' || f === noExt + '.jsx' || 
+        f.startsWith(noExt + '/index.')
+      );
+    }
+    if (target && target !== edge.from) {
+      resolvedEdges.push({ from: edge.from, to: target });
+    }
+  }
+
+  const idMap = new Map<string, string>();
+  files.forEach((f, i) => idMap.set(f, 'n' + i));
+
+  const lines: string[] = ['```mermaid', 'graph TD'];
+
+  if (view === 'dir') {
+    // 🚀 按目录分组（提取第一级目录，或根目录归入 root）
+    const groups = new Map<string, string[]>();
+    for (const f of files) {
+      const parts = f.split('/');
+      const groupName = parts.length > 1 ? parts[0] : 'root';
+      if (!groups.has(groupName)) groups.set(groupName, []);
+      groups.get(groupName)!.push(f);
+    }
+
+    for (const [group, groupFiles] of groups.entries()) {
+      lines.push(`  subgraph ${group}`);
+      for (const f of groupFiles) {
+        const label = f.split('/').pop() || f;
+        lines.push(`    ${idMap.get(f)}["${label}"]`);
+      }
+      lines.push('  end');
+    }
+  } else {
+    // 平铺视图
+    for (const f of files) {
+      const label = f.split('/').pop() || f;
+      lines.push(`  ${idMap.get(f)}["${label}"]`);
+    }
+  }
+
+  for (const e of resolvedEdges) {
+    lines.push(`  ${idMap.get(e.from)} --> ${idMap.get(e.to)}`);
+  }
+
+  lines.push('```');
+  return lines.join('\n');
+}
+
+export function generateHtmlGraph(dir: string, mermaidJsCode?: string, view: GraphView = 'flat'): string {
+  const raw = generateMermaidGraph(dir, view);
+  const lines = raw.split('\n');
+  lines.shift();
+  lines.pop();
+  const mermaidCode = lines.join('\n');
+  
+  let script1 = '';
+  if (mermaidJsCode && mermaidJsCode.length > 100) {
+    const safeCode = mermaidJsCode.replace(/<\/script>/g, '<\\/script>');
+    script1 = `<script>\n${safeCode}\n</script>`;
+  } else {
+    script1 = '<script src="https://cdn.bootcdn.net/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>';
+  }
+
+  const script2 = '<script>if(typeof mermaid!=="undefined"){mermaid.initialize({startOnLoad:true,theme:"default"});}else{document.querySelector(".container").innerHTML="<h2 style=\'color:red\'>⚠️ Mermaid 引擎加载失败</h2>";}</script>';
+
+  return [
+    '<!DOCTYPE html>',
+    '<html lang="zh-CN">',
+    '<head>',
+    '  <meta charset="UTF-8">',
+    '  <title>tred - 项目架构图</title>',
+    '  <style>',
+    '    body { font-family: -apple-system, sans-serif; margin: 0; padding: 2em; background: #f6f8fa; color: #24292f; }',
+    '    h1 { text-align: center; }',
+    '    .container { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 2em; box-shadow: 0 4px 12px rgba(0,0,0,0.05); overflow: auto; }',
+    '    .footer { text-align: center; margin-top: 2em; color: #57606a; font-size: 0.9em; }',
+    '  </style>',
+    '</head>',
+    '<body>',
+    '  <h1>🚀 tred 架构图: ' + dir + ' (' + view + ' view)</h1>',
+    '  <div class="container">',
+    '    <pre class="mermaid">',
+    mermaidCode,
+    '    </pre>',
+    '  </div>',
+    '  <div class="footer">Generated by <b>tred</b> v4.9.0</div>',
+    '  ' + script1,
+    '  ' + script2,
+    '</body>',
+    '</html>'
+  ].join('\n');
+}
+TS_EOF
+
+echo "=== 2. 升级 cli.ts 接入 --view 参数 ==="
+cat > .up-cli.mjs <<'MJS_EOF'
+import { readFileSync, writeFileSync } from 'node:fs';
+const F = 'src/cli.ts';
+let text = readFileSync(F, 'utf8');
+
+// 修改 cmdGraph 传递 view 参数
+const OLD_GRAPH = `  if (flags.html) {
+    const mermaidCode = await ensureMermaid();
+    const html = generateHtmlGraph(dir, mermaidCode);
+    writeFileSync('tred-graph.html', html, 'utf-8');
+    console.log('✅ 架构图已生成: tred-graph.html');
+    if (flags.httpview) {
+      await startHttpView(html, 'tred 架构图');
+    }
+    return 0;
+  }
+  const graph = generateMermaidGraph(dir);`;
+
+const NEW_GRAPH = `  const view = (typeof flags.view === 'string' && ['flat', 'dir'].includes(flags.view)) 
+    ? flags.view as 'flat' | 'dir' 
+    : 'flat';
+
+  if (flags.html) {
+    const mermaidCode = await ensureMermaid();
+    const html = generateHtmlGraph(dir, mermaidCode, view);
+    writeFileSync('tred-graph.html', html, 'utf-8');
+    console.log('✅ 架构图已生成: tred-graph.html');
+    if (flags.httpview) {
+      await startHttpView(html, 'tred 架构图');
+    }
+    return 0;
+  }
+  const graph = generateMermaidGraph(dir, view);`;
+
+if (text.includes(OLD_GRAPH)) {
+  text = text.replace(OLD_GRAPH, NEW_GRAPH);
+  writeFileSync(F, text);
+  console.log('  ✓ cmdGraph 已支持 --view 参数');
+} else {
+  console.error('❌ 找不到 cmdGraph 替换锚点');
+  process.exit(1);
+}
+MJS_EOF
+node .up-cli.mjs && rm .up-cli.mjs
+
+echo "=== 3. 补充测试用例 ==="
+cat > test/graph-view.test.ts <<'TS_EOF'
+import { describe, it } from 'node:test';
+import { strict as assert } from 'node:assert';
+import { generateMermaidGraph } from '../src/graph.js';
+
+describe('generateMermaidGraph Views', function () {
+  it('dir 视图应包含 subgraph 语法', function () {
+    const graph = generateMermaidGraph('src', 'dir');
+    // 如果 src 下有子目录，必然有 subgraph
+    assert.ok(graph.includes('subgraph') || graph.includes('root'), 'Should contain subgraphs');
+  });
+
+  it('flat 视图不应包含 subgraph 语法', function () {
+    const graph = generateMermaidGraph('src', 'flat');
+    assert.ok(!graph.includes('subgraph'), 'Should not contain subgraphs');
+  });
+});
+TS_EOF
+
+node -e '
+  const fs = require("fs");
+  const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+  if (!pkg.scripts["test:fast"].includes("test/graph-view.test.ts")) {
+    pkg.scripts["test:fast"] += " test/graph-view.test.ts";
+    fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+  }
+'
+
+echo "=== 4. 构建并跑冒烟 ==="
+npm run build
+bash smoke.sh | tail -3
+
+echo "=== 5. 提交并推送 ==="
+git add -A
+git commit -m "feat(graph): 支持子图分组 (subgraph) 与多视图 (--view flat|dir)
+
+- 按目录层级生成 subgraph 分组，解决面条图难以阅读的问题
+- cli 增加 --view 参数，支持 flat (平铺) 和 dir (目录分组) 两种架构图
+- 更新测试用例覆盖多视图逻辑"
+
+git push origin main
