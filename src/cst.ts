@@ -1,6 +1,7 @@
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
 import { getPlugins } from './plugin.js';
-import { readFileSync, writeFileSync, unlinkSync, mkdtempSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync, mkdtempSync, existsSync, mkdirSync, rmSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 export interface CstOp {
@@ -165,15 +166,25 @@ export async function runCst(filePath: string, options?: { allowNodejs?: boolean
   }
 
   // 构建临时脚本
-  const tmpDir = mkdtempSync(join(tmpdir(), 'tred-cst-'));
+  // 🚀 修复：将临时脚本生成在项目根目录的 .tred-tmp 下，确保能解析到项目的 node_modules
+  const tmpBase = join(process.cwd(), '.tred-tmp');
+  if (!existsSync(tmpBase)) mkdirSync(tmpBase, { recursive: true });
+  const tmpDir = mkdtempSync(join(tmpBase, 'cst-'));
   const tmpFile = join(tmpDir, 'run.mjs');
 
-  // 根据当前环境解析 tred 模块的导入路径
-  // 如果在 tred 源码库里运行，用相对路径。如果作为全局包运行，用 @rtcn/tred
-  const isLocal = process.cwd().includes('tred') && !process.cwd().includes('node_modules');
-  const tredPath = isLocal ? JSON.stringify(resolve('dist/index.js')) : '"@rtcn/tred"';
+  // 根据当前文件（dist/cst.js）的物理位置，直接推导同级的 dist/index.js
+  let tredPath = '"@rtcn/tred"';
+  try {
+    const currentDir = dirname(fileURLToPath(import.meta.url));
+    tredPath = JSON.stringify(join(currentDir, 'index.js'));
+  } catch {
+    // 极少数运行环境不支持 import.meta.url 时的兜底
+  }
 
-  let script = `import * as tred from ${tredPath};\n\n`;
+  // 🚀 修复：在生成的 ESM 脚本中注入 require 垫片，允许使用 CommonJS 语法
+  let script = `import * as tred from ${tredPath};\n`;
+  script += `import { createRequire } from 'node:module';\n`;
+  script += `const require = createRequire(import.meta.url);\n\n`;
 
   if (nodeCode) {
     const isAllowed = options?.allowNodejs || readConfigAllowNodejs();
@@ -229,6 +240,12 @@ export async function runCst(filePath: string, options?: { allowNodejs?: boolean
       process.exit(res.status || 1);
     }
   } finally {
-    try { unlinkSync(tmpFile); } catch { /* ignore */ }
+    try {
+      rmSync(tmpDir, { recursive: true, force: true });
+      // 如果清理后 .tred-tmp 空了，顺手把它也删了
+      if (existsSync(tmpBase) && readdirSync(tmpBase).length === 0) {
+        rmSync(tmpBase, { recursive: true, force: true });
+      }
+    } catch { /* ignore */ }
   }
 }
