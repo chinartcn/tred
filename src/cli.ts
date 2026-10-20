@@ -1,3 +1,4 @@
+import { atomicWrite } from './atomic.js';
 import type { SnippetSelector } from './types.js';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, cpSync, rmSync } from 'node:fs';
@@ -15,6 +16,8 @@ import { splitFile } from './split.js';
 import { chopFile } from './chopper.js';
 import { applyPatch } from './patch.js';
 import { runCst } from './cst.js';
+import { createSkeleton } from './create.js';
+import { findAnchor } from './anchor.js';
 import { initPluginContext } from './plugin.js';
 import { tokenize } from './bm25.js';
 import { getAstShape } from './ast-shape.js';
@@ -1151,7 +1154,8 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (cmd === 'serve')        { process.exit(await cmdServe(flags)); }
   
   // v1.3.0: ops 声明式执行
-  if (cmd === 'undo')         { process.exit(await cmdUndo()); }
+  if (cmd === 'create')       { process.exit(await cmdCreate(flags)); }
+  if (cmd === 'undo')         { process.exit(await cmdUndo(flags)); }
   if (cmd === 'commit')       { process.exit(await cmdCommit(flags)); }
   if (cmd === 'strip')        { process.exit(await cmdStrip(flags)); }
   if (cmd === 'ops' || (cmd && cmd.endsWith('.json'))) {
@@ -1176,7 +1180,21 @@ if (__isCliEntry) {
 
 
 
-async function cmdUndo(): Promise<number> {
+
+async function cmdCreate(flags: Record<string, string | true>): Promise<number> {
+  const file = requireStr(flags, 'file');
+  const type = requireStr(flags, 'type') as any;
+  const name = requireStr(flags, 'name');
+  const apply = Boolean(flags.apply);
+  if (!['class', 'function', 'interface'].includes(type)) {
+    die('--type 必须是 class, function 或 interface');
+  }
+  const res = createSkeleton({ file, type, name, apply });
+  console.log(res.ok ? '✅ ' + res.message : '❌ ' + res.message);
+  return res.ok ? 0 : 1;
+}
+
+async function cmdUndo(flags: Record<string, string | true>): Promise<number> {
   const snapshotDir = join(process.cwd(), '.tred', 'snapshots');
   if (!existsSync(snapshotDir)) {
     die('没有找到任何操作快照（.tred/snapshots 不存在）');
@@ -1187,15 +1205,41 @@ async function cmdUndo(): Promise<number> {
   }
   const latest = snapshots[snapshots.length - 1];
   const latestPath = join(snapshotDir, latest);
+  const anchorName = typeof flags.anchor === 'string' ? flags.anchor : undefined;
+  const filePath = typeof flags.file === 'string' ? flags.file : undefined;
 
-  console.log('[tred] 正在从快照回滚: ' + latest);
-  // 把快照里的文件覆盖回项目
-  cpSync(latestPath, process.cwd(), { recursive: true });
-  
-  // 删除已撤销的快照
-  rmSync(latestPath, { recursive: true, force: true });
+  if (!anchorName) {
+    console.log('[tred] 正在从快照全局回滚: ' + latest);
+    cpSync(latestPath, process.cwd(), { recursive: true });
+    rmSync(latestPath, { recursive: true, force: true });
+    console.log('✅ 撤销成功，代码已恢复。');
+    return 0;
+  }
 
-  console.log('✅ 撤销成功，代码已恢复到执行 "' + latest + '" 前的状态。');
+  // 局部按锚点回滚
+  if (!filePath) die('局部回滚必须指定 --file');
+  const snapFilePath = join(latestPath, filePath);
+  if (!existsSync(snapFilePath)) die('快照中找不到该文件: ' + filePath);
+  if (!existsSync(filePath)) die('当前项目找不到该文件: ' + filePath);
+
+  const snapContent = readFileSync(snapFilePath, 'utf-8');
+  const currentContent = readFileSync(filePath, 'utf-8');
+
+  const snapBlock = findAnchor(snapContent, anchorName);
+  const currBlock = findAnchor(currentContent, anchorName);
+
+  if (!snapBlock || !currBlock) {
+    die('快照或当前文件中找不到锚点: ' + anchorName);
+  }
+
+  const snapLines = snapContent.split('\n');
+  const currLines = currentContent.split('\n');
+
+  const restoredBlockText = snapLines.slice(snapBlock.startLine, snapBlock.endLine + 1).join('\n');
+  const newContent = currLines.slice(0, currBlock.startLine).join('\n') + '\n' + restoredBlockText + '\n' + currLines.slice(currBlock.endLine + 1).join('\n');
+
+  atomicWrite(filePath, newContent);
+  console.log('✅ 成功局部回滚锚点 "' + anchorName + '" 到状态: ' + latest);
   return 0;
 }
 
