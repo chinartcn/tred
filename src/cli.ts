@@ -1,7 +1,10 @@
+import { existsSync, readFileSync, readdirSync, cpSync, rmSync, mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
+import { createInterface } from 'node:readline/promises';
+import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
 import { atomicWrite } from './atomic.js';
 import type { SnippetSelector } from './types.js';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, cpSync, rmSync , writeFileSync } from 'node:fs';
 import { runOps } from './ops.js';
 import { annotateDir, annotateFile, buildOutline, diffAnchor, diffDir, fixDir, makeFingerprint, replace, replaceMany, verifyDir, renderVerifyMarkdown, renderFixMarkdown, diffDirGit, renderDiffDirMarkdown, renderAnnotateDirMarkdown, doctor, buildBaseline, loadBaseline, saveBaseline, filterIssuesByBaseline, init, renderGithubAnnotations, renderFixGithubAnnotations, watchDir, getDiffLines, renderSarif, renderHtml, serveHtml, tryOpenBrowser } from './index.js';
 import type { AnnotateDirResult, AnnotateResult, AstSelector, DiffDirResult, FixReport, Formatter, OutlineNode, ReplaceOptions, VerifyReport, DoctorReport, InitResult, BaselineFile } from './types.js';
@@ -1202,10 +1205,49 @@ async function startHttpView(html: string, title: string): Promise<void> {
   });
 }
 
+
+async function ensureMermaid(): Promise<string | undefined> {
+  const cacheDir = join(process.cwd(), '.tred', 'cache');
+  const cachePath = join(cacheDir, 'mermaid.min.js');
+
+  if (existsSync(cachePath)) {
+    return readFileSync(cachePath, 'utf-8');
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  let answer = 'y';
+  try {
+    answer = await rl.question('\n💡 提示: 为了极速渲染架构图并支持离线查看，需要下载 Mermaid 渲染引擎 (约 3MB)。是否同意？(Y/n) ');
+  } catch { /* TTY 异常时默认同意 */ }
+  rl.close();
+
+  if (answer.toLowerCase() === 'n') {
+    console.log('  (将降级使用在线 CDN 渲染)');
+    return undefined;
+  }
+
+  console.log('  ⏳ 正在下载引擎...');
+  try {
+    const res = await fetch('https://cdn.bootcdn.net/ajax/libs/mermaid/10.9.0/mermaid.min.js');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    mkdirSync(cacheDir, { recursive: true });
+    const fileStream = createWriteStream(cachePath);
+    // 兼容 Node.js 18+ 的 Web Stream 到 Node Stream
+    await pipeline(Readable.fromWeb(res.body as any), fileStream);
+    console.log('  ✓ 引擎已缓存至 .tred/cache/mermaid.min.js');
+    return readFileSync(cachePath, 'utf-8');
+  } catch (e) {
+    console.log('  ❌ 下载失败: ' + (e instanceof Error ? e.message : String(e)));
+    console.log('  (将降级使用在线 CDN 渲染)');
+    return undefined;
+  }
+}
+
 async function cmdGraph(flags: Record<string, string | true>): Promise<number> {
   const dir = typeof flags.dir === 'string' ? flags.dir : '.';
   if (flags.html) {
-    const html = generateHtmlGraph(dir);
+    const mermaidCode = await ensureMermaid();
+    const html = generateHtmlGraph(dir, mermaidCode);
     writeFileSync('tred-graph.html', html, 'utf-8');
     console.log('✅ 架构图已生成: tred-graph.html');
     if (flags.httpview) {
