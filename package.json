@@ -33,7 +33,7 @@
     "demo:github": "bash examples/demo-github-annotations.sh",
     "demo:watch": "bash examples/demo-watch.sh",
     "demo:diff-from": "bash examples/demo-diff-from.sh",
-    "test:fast": "node --import tsx --test test/tred.test.ts test/baseline.test.ts test/init.test.ts test/annotate-order.test.ts test/render-github.test.ts test/diff-lines.test.ts test/render-markdown.test.ts test/verify.test.ts test/create.test.ts test/hybrid.test.ts test/undo.test.ts",
+    "test:fast": "node --import tsx --test test/tred.test.ts test/baseline.test.ts test/init.test.ts test/annotate-order.test.ts test/render-github.test.ts test/diff-lines.test.ts test/render-markdown.test.ts test/verify.test.ts test/create.test.ts test/hybrid.test.ts test/undo.test.ts test/graph.test.ts",
     "demo:sarif": "bash examples/demo-sarif.sh",
     "demo:html": "bash examples/demo-html.sh",
     "serve": "node bin/tred.mjs serve",

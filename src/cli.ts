@@ -16,6 +16,8 @@ import { splitFile } from './split.js';
 import { chopFile } from './chopper.js';
 import { applyPatch } from './patch.js';
 import { runCst } from './cst.js';
+import { generateMermaidGraph } from './graph.js';
+import { unifiedDiff } from './diff.js';
 import { createSkeleton } from './create.js';
 import { findAnchor } from './anchor.js';
 import { initPluginContext } from './plugin.js';
@@ -1154,6 +1156,7 @@ export async function cliMain(argv: string[]): Promise<void> {
   if (cmd === 'serve')        { process.exit(await cmdServe(flags)); }
   
   // v1.3.0: ops 声明式执行
+  if (cmd === 'graph')        { process.exit(await cmdGraph(flags)); }
   if (cmd === 'create')       { process.exit(await cmdCreate(flags)); }
   if (cmd === 'undo')         { process.exit(await cmdUndo(flags)); }
   if (cmd === 'commit')       { process.exit(await cmdCommit(flags)); }
@@ -1181,6 +1184,18 @@ if (__isCliEntry) {
 
 
 
+
+async function cmdGraph(flags: Record<string, string | true>): Promise<number> {
+  const dir = typeof flags.dir === 'string' ? flags.dir : '.';
+  const graph = generateMermaidGraph(dir);
+  if (flags.json) {
+    console.log(JSON.stringify({ mermaid: graph }));
+  } else {
+    console.log(graph);
+  }
+  return 0;
+}
+
 async function cmdCreate(flags: Record<string, string | true>): Promise<number> {
   const file = requireStr(flags, 'file');
   const type = requireStr(flags, 'type') as any;
@@ -1203,8 +1218,32 @@ async function cmdUndo(flags: Record<string, string | true>): Promise<number> {
   if (snapshots.length === 0) {
     die('没有可撤销的快照');
   }
-  const latest = snapshots[snapshots.length - 1];
-  const latestPath = join(snapshotDir, latest);
+  if (flags.list) {
+    console.log('[tred] 所有历史快照:');
+    snapshots.forEach(s => console.log('  - ' + s));
+    return 0;
+  }
+
+  const targetSnapshot = typeof flags.snapshot === 'string' ? flags.snapshot : snapshots[snapshots.length - 1];
+  const latestPath = join(snapshotDir, targetSnapshot);
+  if (!existsSync(latestPath)) die('快照不存在: ' + targetSnapshot);
+
+  const isPreview = Boolean(flags.preview);
+  if (isPreview) {
+    console.log('[tred] 预览回滚 (Dry-run): ' + targetSnapshot);
+    // 简单实现：直接对比目标文件和快照文件
+    if (typeof flags.file === 'string') {
+      const snapFile = join(latestPath, flags.file);
+      if (existsSync(snapFile)) {
+        const a = readFileSync(flags.file, 'utf-8');
+        const b = readFileSync(snapFile, 'utf-8');
+        console.log(unifiedDiff(a, b, 'current/' + flags.file, 'snapshot/' + flags.file));
+      }
+    }
+    return 0;
+  }
+  
+  const latest = targetSnapshot; // 保持下面逻辑兼容
   const anchorName = typeof flags.anchor === 'string' ? flags.anchor : undefined;
   const filePath = typeof flags.file === 'string' ? flags.file : undefined;
 
