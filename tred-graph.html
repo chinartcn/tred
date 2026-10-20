@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>tred - 项目架构图</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 0; padding: 2em; background: #f6f8fa; color: #24292f; }
+    h1 { text-align: center; }
+    .container { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 2em; box-shadow: 0 4px 12px rgba(0,0,0,0.05); overflow: auto; }
+    .footer { text-align: center; margin-top: 2em; color: #57606a; font-size: 0.9em; }
+  </style>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'default' });
+  </script>
+</head>
+<body>
+  <h1>🚀 tred 架构图: src</h1>
+  <div class="container">
+    <pre class="mermaid">
+graph TD
+  "anchor.ts"["anchor.ts"]
+  "annotate.ts"["annotate.ts"]
+  "ast-outline.ts"["ast-outline.ts"]
+  "ast-shape.ts"["ast-shape.ts"]
+  "ast.ts"["ast.ts"]
+  "atomic.ts"["atomic.ts"]
+  "baseline.ts"["baseline.ts"]
+  "bm25.ts"["bm25.ts"]
+  "cache.ts"["cache.ts"]
+  "chopper.ts"["chopper.ts"]
+  "cli.ts"["cli.ts"]
+  "create.ts"["create.ts"]
+  "cst.ts"["cst.ts"]
+  "diff-anchor.ts"["diff-anchor.ts"]
+  "diff-dir.ts"["diff-dir.ts"]
+  "diff-lines.ts"["diff-lines.ts"]
+  "diff.ts"["diff.ts"]
+  "doctor.ts"["doctor.ts"]
+  "embedding.ts"["embedding.ts"]
+  "fingerprint.ts"["fingerprint.ts"]
+  "fix.ts"["fix.ts"]
+  "fuzzy.ts"["fuzzy.ts"]
+  "git.ts"["git.ts"]
+  "glob.ts"["glob.ts"]
+  "graph.ts"["graph.ts"]
+  "grep.ts"["grep.ts"]
+  "hybrid.ts"["hybrid.ts"]
+  "impact.ts"["impact.ts"]
+  "index.ts"["index.ts"]
+  "init.ts"["init.ts"]
+  "map.ts"["map.ts"]
+  "mcp.ts"["mcp.ts"]
+  "minhash.ts"["minhash.ts"]
+  "ops.ts"["ops.ts"]
+  "parsers/css.ts"["css.ts"]
+  "parsers/html.ts"["html.ts"]
+  "parsers/index.ts"["index.ts"]
+  "parsers/json.ts"["json.ts"]
+  "parsers/markdown.ts"["markdown.ts"]
+  "parsers/types.ts"["types.ts"]
+  "patch.ts"["patch.ts"]
+  "plugin.ts"["plugin.ts"]
+  "render-github.ts"["render-github.ts"]
+  "render-html.ts"["render-html.ts"]
+  "render-markdown.ts"["render-markdown.ts"]
+  "render-sarif.ts"["render-sarif.ts"]
+  "rollback-log.ts"["rollback-log.ts"]
+  "safety.ts"["safety.ts"]
+  "serve.ts"["serve.ts"]
+  "snippet.ts"["snippet.ts"]
+  "split.ts"["split.ts"]
+  "state.ts"["state.ts"]
+  "strip.ts"["strip.ts"]
+  "types.ts"["types.ts"]
+  "vector-index.ts"["vector-index.ts"]
+  "verify.ts"["verify.ts"]
+  "watch.ts"["watch.ts"]
+  "annotate.ts" --> "anchor.js.ts"
+  "annotate.ts" --> "verify.js.ts"
+  "annotate.ts" --> "diff.js.ts"
+  "annotate.ts" --> "safety.js.ts"
+  "annotate.ts" --> "atomic.js.ts"
+  "annotate.ts" --> "git.js.ts"
+  "annotate.ts" --> "glob.js.ts"
+  "annotate.ts" --> "types.js.ts"
+  "ast-outline.ts" --> "types.js.ts"
+  "ast.ts" --> "types.js.ts"
+  "ast.ts" --> "fuzzy.js.ts"
+  "baseline.ts" --> "types.js.ts"
+  "cache.ts" --> "types.js.ts"
+  "cache.ts" --> "atomic.js.ts"
+  "cli.ts" --> "atomic.js.ts"
+  "cli.ts" --> "types.js.ts"
+  "cli.ts" --> "ops.js.ts"
+  "cli.ts" --> "index.js.ts"
+  "cli.ts" --> "types.js.ts"
+  "cli.ts" --> "strip.js.ts"
+  "cli.ts" --> "grep.js.ts"
+  "cli.ts" --> "map.js.ts"
+  "cli.ts" --> "impact.js.ts"
+  "cli.ts" --> "split.js.ts"
+  "cli.ts" --> "chopper.js.ts"
+  "cli.ts" --> "patch.js.ts"
+  "cli.ts" --> "cst.js.ts"
+  "cli.ts" --> "graph.js.ts"
+  "cli.ts" --> "diff.js.ts"
+  "cli.ts" --> "create.js.ts"
+  "cli.ts" --> "anchor.js.ts"
+  "cli.ts" --> "plugin.js.ts"
+  "cli.ts" --> "bm25.js.ts"
+  "cli.ts" --> "ast-shape.js.ts"
+  "cli.ts" --> "minhash.js.ts"
+  "cli.ts" --> "mcp.js.ts"
+  "create.ts" --> "atomic.js.ts"
+  "create.ts" --> "fingerprint.js.ts"
+  "cst.ts" --> "plugin.js.ts"
+  "diff-anchor.ts" --> "anchor.js.ts"
+  "diff-anchor.ts" --> "diff.js.ts"
+  "diff-anchor.ts" --> "types.js.ts"
+  "diff-dir.ts" --> "verify.js.ts"
+  "diff-dir.ts" --> "git.js.ts"
+  "diff-dir.ts" --> "diff-anchor.js.ts"
+  "diff-dir.ts" --> "types.js.ts"
+  "doctor.ts" --> "cache.js.ts"
+  "doctor.ts" --> "git.js.ts"
+  "doctor.ts" --> "verify.js.ts"
+  "doctor.ts" --> "types.js.ts"
+  "fix.ts" --> "types.js.ts"
+  "fix.ts" --> "verify.js.ts"
+  "fix.ts" --> "safety.js.ts"
+  "fix.ts" --> "diff.js.ts"
+  "fix.ts" --> "atomic.js.ts"
+  "fix.ts" --> "cache.js.ts"
+  "grep.ts" --> "ast-outline.js.ts"
+  "grep.ts" --> "bm25.js.ts"
+  "grep.ts" --> "ast-shape.js.ts"
+  "grep.ts" --> "minhash.js.ts"
+  "grep.ts" --> "fuzzy.js.ts"
+  "hybrid.ts" --> "bm25.js.ts"
+  "hybrid.ts" --> "ast-shape.js.ts"
+  "hybrid.ts" --> "minhash.js.ts"
+  "hybrid.ts" --> "fuzzy.js.ts"
+  "index.ts" --> "state.js.ts"
+  "index.ts" --> "parsers/index.js.ts"
+  "index.ts" --> "anchor.js.ts"
+  "index.ts" --> "ast.js.ts"
+  "index.ts" --> "snippet.js.ts"
+  "index.ts" --> "atomic.js.ts"
+  "index.ts" --> "safety.js.ts"
+  "index.ts" --> "diff.js.ts"
+  "index.ts" --> "types.js.ts"
+  "index.ts" --> "rollback-log.js.ts"
+  "init.ts" --> "types.js.ts"
+  "map.ts" --> "ast-outline.js.ts"
+  "mcp.ts" --> "map.js.ts"
+  "mcp.ts" --> "grep.js.ts"
+  "mcp.ts" --> "split.js.ts"
+  "mcp.ts" --> "patch.js.ts"
+  "mcp.ts" --> "index.js.ts"
+  "mcp.ts" --> "impact.js.ts"
+  "mcp.ts" --> "cst.js.ts"
+  "ops.ts" --> "index.js.ts"
+  "ops.ts" --> "annotate.js.ts"
+  "ops.ts" --> "verify.js.ts"
+  "parsers/css.ts" --> "parsers/types.js.ts"
+  "parsers/html.ts" --> "parsers/types.js.ts"
+  "parsers/index.ts" --> "parsers/json.js.ts"
+  "parsers/index.ts" --> "parsers/markdown.js.ts"
+  "parsers/index.ts" --> "parsers/html.js.ts"
+  "parsers/index.ts" --> "parsers/css.js.ts"
+  "parsers/index.ts" --> "parsers/types.js.ts"
+  "parsers/json.ts" --> "parsers/types.js.ts"
+  "parsers/markdown.ts" --> "parsers/types.js.ts"
+  "patch.ts" --> "safety.js.ts"
+  "patch.ts" --> "fuzzy.js.ts"
+  "patch.ts" --> "bm25.js.ts"
+  "patch.ts" --> "ast-shape.js.ts"
+  "patch.ts" --> "minhash.js.ts"
+  "patch.ts" --> "hybrid.js.ts"
+  "patch.ts" --> "embedding.js.ts"
+  "patch.ts" --> "vector-index.js.ts"
+  "plugin.ts" --> "cst.js.ts"
+  "render-github.ts" --> "types.js.ts"
+  "render-html.ts" --> "types.js.ts"
+  "render-markdown.ts" --> "types.js.ts"
+  "render-sarif.ts" --> "types.js.ts"
+  "rollback-log.ts" --> "atomic.js.ts"
+  "rollback-log.ts" --> "types.js.ts"
+  "safety.ts" --> "types.js.ts"
+  "snippet.ts" --> "types.js.ts"
+  "split.ts" --> "safety.js.ts"
+  "verify.ts" --> "cache.js.ts"
+  "verify.ts" --> "git.js.ts"
+  "verify.ts" --> "state.js.ts"
+  "verify.ts" --> "glob.js.ts"
+  "verify.ts" --> "types.js.ts"
+    </pre>
+  </div>
+  <div class="footer">Generated by <b>tred</b></div>
+</body>
+</html>
